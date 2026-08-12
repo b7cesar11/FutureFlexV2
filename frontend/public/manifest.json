@@ -1,0 +1,31 @@
+{
+  "short_name": "Future Flex",
+  "name": "Future Flex V2 — Gestão Financeira Inteligente",
+  "description": "Compromissos do mês, projeção de 24 meses e quanto realmente está livre para gastar.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#09090b",
+  "background_color": "#09090b",
+  "lang": "pt-BR",
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    { "name": "Compromissos do mês", "url": "/compromissos" },
+    { "name": "Projeção", "url": "/projecao" }
+  ]
+}

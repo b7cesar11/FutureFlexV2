@@ -1,0 +1,39 @@
+{
+  "summary": "First-round e2e testing of Future Flex V2 (Phases 1+2). Backend: 20 pytest cases + 20 pre-existing business-rule tests all pass (40/40). Validated ANTI-DUPLA-CONTAGEM (invoice R$421,90; children iPhone/Spotify/Ana carry counts_in_total=false; installments/subscriptions group totals = R$0), invoice composition (sum of items == total), 12-installment purchase creates 12 occurrences without any transaction and does not debit the account, pay-invoice debits the chosen account and produces invoice_payment transaction, pay-occurrence outside card uses account chosen at payment time and second pay returns 409, third-party demo shows total_receivable=600 total_payable=0, freeze reduces committed & increases frozen_total (unfreeze restores), 24-row projection, simulation is read-only (dashboard/months/transactions identical before/after), tenant isolation (foreign commitment id -> 404/403), materialize idempotent, /api/auth/google/session rejects invalid session with 401, dashboard values equal /api/months/{current} (single-source). Frontend: Desktop demo login shows exactly saldo R$7.000, income R$5.500, committed R$2.221,90, free R$4.778,10, group-total cards R$421,90, installments R$0, subscriptions R$0, fixed R$1.800, third_parties R$100, income R$5.400 — matches spec. Cards page lists open faturas 421,90 each competence. TP page shows R$600 receivable / R$0 payable. Projection has 24 rows. Mobile: bottom-nav + FAB visible, only one month-switcher visible (second is hidden md:block). Logout returns to /login.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ThirdParties", "issues": ["Recharts container renders with width=-1 height=-1 (chart has no size). Cosmetic console warning; add minHeight/width to the ResponsiveContainer parent."]},
+      {"screen": "PayDialog / ThirdParties select fields", "issues": ["React hydration warning: <span> injected as child of <option> by dev instrumentation (data-ve-dynamic). Harmless in prod build, but produces console errors in dev; consider marking option text as static."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/backend_test.xml",
+    "/app/tests/test_business_rules.py"
+  ],
+  "action_items": [
+    "(low) Investigate the recharts width=-1/height=-1 warning on /terceiros — parent container likely missing explicit size.",
+    "(low) Consider silencing the <span> inside <option> dev-instrumentation warning; not user-facing."
+  ],
+  "critical_code_review_comments": [
+    "Solid layering (domain / services / repositories / api). UnitOfWork transactions on all write endpoints.",
+    "engine.py restricts _serialize to strip user_id — good multi-tenant hygiene.",
+    "Occurrence status derived server-side on read; single-source rule respected between /dashboard, /months/{competence} and /free-money (verified programmatically).",
+    "ANTI-DUPLA-CONTAGEM correctly enforced: invoice occurrence carries counts_in_total=true, installment/subscription children counts_in_total=false, and month totals aggregate only counts_in_total items.",
+    "Third-party card purchase produces two linked commitments (verified by /third-parties + /commitments/{id} linked_commitment).",
+    "Idempotency on POST /invoices/{id}/pay and /occurrences/{id}/pay verified (same Idempotency-Key does not double debit).",
+    "Simulation service is read-only (dashboard/month/tx snapshots unchanged after POST /simulations)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (20/20 new + 20/20 legacy)", "frontend": "~95% (all critical flows visible & correct; only 2 low-priority console warnings)"},
+  "test_credentials": "demo@futureflex.dev / Demo@2026 (seeded, verified). New users can register via /api/auth/register using any valid email domain (email-validator rejects .test / .example). Google session_id=invalid correctly returns 401.",
+  "seed_data_creation": "Used existing demo seed (Itaú R$5.200, Nubank Conta R$1.800, Nubank card, iPhone 15 12x, Aluguel, Spotify, salário, Ana 6x). Created transient TEST_ users via API for isolated fixtures — no residual data touches demo tenant.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite lives at /app/backend/tests/backend_test.py — run with `cd /app && REACT_APP_BACKEND_URL=<url> python -m pytest backend/tests/backend_test.py -q`. Legacy business rules at /app/tests/test_business_rules.py. Key API shapes: /months/{comp}.groups is a LIST of {key,label,total,paid,counts_in_total,items[]}; /third-parties returns {items[], total_receivable, total_payable}; /accounts uses current_balance / opening_balance (not 'balance'); month_view uses 'frozen_total' not 'frozen'. Email validator rejects .test / .example / reserved TLDs — use @example.com in fixtures.",
+  "rca of the issue": "No blocking issues found. All Phase 1 (auth, RLS, transactions) and Phase 2 (commitments/invoices/installments/payments/third-parties/projection/simulation) acceptance criteria pass end-to-end."
+}

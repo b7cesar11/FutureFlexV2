@@ -1,0 +1,66 @@
+import axios from "axios";
+
+const BASE = process.env.REACT_APP_BACKEND_URL;
+export const API = `${BASE}/api`;
+
+export const http = axios.create({ baseURL: API, withCredentials: true });
+
+export function formatApiErrorDetail(detail) {
+  if (detail == null) return "Algo deu errado. Tente novamente.";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail))
+    return detail
+      .map((e) => (e && typeof e.msg === "string" ? e.msg : JSON.stringify(e)))
+      .filter(Boolean)
+      .join(" ");
+  if (detail && typeof detail.msg === "string") return detail.msg;
+  return String(detail);
+}
+
+export function apiError(e) {
+  return formatApiErrorDetail(e?.response?.data?.detail) || e?.message;
+}
+
+export const brl = (value) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+    Number(value || 0),
+  );
+
+export const MONTHS_PT = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+export function competenceLabel(competence) {
+  if (!competence) return "";
+  const [year, month] = competence.split("-");
+  return `${MONTHS_PT[Number(month) - 1]} ${year}`;
+}
+
+export function shortCompetence(competence) {
+  const [year, month] = competence.split("-");
+  return `${MONTHS_PT[Number(month) - 1].slice(0, 3)}/${year.slice(2)}`;
+}
+
+export function addMonths(competence, n) {
+  const [year, month] = competence.split("-").map(Number);
+  const total = year * 12 + (month - 1) + n;
+  return `${String(Math.floor(total / 12)).padStart(4, "0")}-${String((total % 12) + 1).padStart(2, "0")}`;
+}
+
+export function currentCompetence() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export const formatDate = (value) =>
+  value ? new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+
+export const STATUS_META = {
+  future: { label: "Previsto", className: "text-zinc-400 border-white/20 border-dashed" },
+  due: { label: "A vencer", className: "text-amber-300 border-amber-400/40" },
+  paid: { label: "Pago", className: "text-emerald-400 border-emerald-400/40" },
+  overdue: { label: "Atrasado", className: "text-rose-400 border-rose-400/50" },
+  frozen: { label: "Congelado", className: "text-slate-400 border-slate-400/40" },
+  cancelled: { label: "Cancelado", className: "text-zinc-500 border-zinc-600" },
+};

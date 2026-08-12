@@ -7,8 +7,9 @@ import App from "@/App";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
+      staleTime: 30_000,
       refetchOnWindowFocus: false,
+      retry: 1,
     },
   },
 });
@@ -21,3 +22,9 @@ root.render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  });
+}

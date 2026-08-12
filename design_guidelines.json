@@ -1,0 +1,156 @@
+{
+  "project_name": "Future Flex V2 - Sistema Inteligente de Gestão Financeira Pessoal",
+  "theme": "dark",
+  "archetype": "TACTICAL WEALTH & SWISS CONTRAST (Fusion)",
+  "language": "pt-BR",
+  "currency": "BRL",
+  "typography": {
+    "strategy": "Geometric Sans for confidence, Monospace for precise financial data.",
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weight": "font-medium to font-bold",
+      "letter_spacing": "tracking-tight",
+      "sizes": {
+        "h1": "text-4xl sm:text-5xl",
+        "h2": "text-2xl sm:text-3xl",
+        "h3": "text-xl sm:text-2xl",
+        "h4": "text-lg sm:text-xl"
+      },
+      "color": "text-zinc-50"
+    },
+    "body": {
+      "family": "Outfit, sans-serif",
+      "sizes": {
+        "default": "text-base",
+        "small": "text-sm",
+        "xs": "text-xs"
+      },
+      "color": "text-zinc-400"
+    },
+    "numbers_and_data": {
+      "family": "JetBrains Mono, monospace",
+      "usage": "Use strictly for balances, transaction amounts, dates, and percentages.",
+      "letter_spacing": "tracking-tighter"
+    },
+    "labels": {
+      "style": "uppercase text-xs tracking-[0.15em] font-semibold text-zinc-500"
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#09090B",
+      "surface": "#18181B",
+      "surface_hover": "#27272A",
+      "glass": "rgba(9, 9, 11, 0.75)"
+    },
+    "borders": {
+      "subtle": "rgba(255, 255, 255, 0.08)",
+      "focus": "#CCFF00"
+    },
+    "text": {
+      "primary": "#FAFAFA",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A",
+      "inverse": "#09090B"
+    },
+    "brand_and_accents": {
+      "primary": "#CCFF00",
+      "primary_hover": "#B3E600",
+      "primary_foreground": "#000000",
+      "secondary": "#FAFAFA"
+    },
+    "semantic": {
+      "income_free": "#34D399",
+      "expense_committed": "#FB7185",
+      "frozen_pending": "#94A3B8",
+      "warning": "#FBBF24"
+    },
+    "data_states": {
+      "previsto": {
+        "background": "transparent",
+        "border": "1px dashed rgba(255, 255, 255, 0.2)",
+        "text": "#A1A1AA",
+        "opacity": "opacity-70"
+      },
+      "realizado": {
+        "background": "#18181B",
+        "border": "1px solid rgba(255, 255, 255, 0.1)",
+        "text": "#FAFAFA",
+        "opacity": "opacity-100"
+      }
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid crisp borders for structure. No soft, muddy dropshadows.",
+    "shadows": "Minimal. Use inner glowing borders (box-shadow: inset 0 1px 0 rgba(255,255,255,0.1)) instead of heavy outer shadows.",
+    "glassmorphism": "Used only for mobile bottom nav and sticky top headers: backdrop-blur-xl bg-zinc-950/80 border-b (or top) border-white/10.",
+    "texture": "Subtle noise on main background to remove digital flatness."
+  },
+  "components": {
+    "bottom_nav_mobile": "Fixed bottom. Glassmorphism effect. Central FAB for '+ Registrar' must overlap the bar, colored in primary (#CCFF00) with dark icon.",
+    "sidebar_desktop": "Collapsible left sidebar for desktop. Solid dark background (#09090B) with 1px right border. High-density navigation links.",
+    "cards": "Flat solid surfaces (#18181B) with 1px border. No shadows. Internal padding p-4 or p-6.",
+    "buttons": {
+      "primary": "bg-[#CCFF00] text-black font-semibold rounded-md hover:bg-[#B3E600] transition-colors",
+      "secondary": "bg-zinc-800 text-zinc-50 border border-zinc-700 hover:bg-zinc-700",
+      "ghost": "hover:bg-zinc-800 text-zinc-300 hover:text-white"
+    },
+    "inputs": "Shadcn based. bg-zinc-900 border-zinc-800 focus:border-[#CCFF00] focus:ring-1 focus:ring-[#CCFF00].",
+    "modals_drawers": "Use Drawer for mobile-first interactions (bottom sheet). Use Dialog for desktop. Dark overlay bg-black/60 backdrop-blur-sm.",
+    "charts": "Recharts or Shadcn Charts. Thin bright lines. Subdued gridlines. Color palette tuned for dark contrast (e.g., Emerald for income, Rose for expense)."
+  },
+  "grids_and_layouts": {
+    "strategy": "The High-Density Grid Protocol (Mode B). Dense, data-heavy, scannable.",
+    "desktop": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 or gap-6. Left Sidebar + Main Content.",
+    "mobile": "Mobile-first approach. 100% width cards, stacked layout, bottom padding to account for fixed bottom navigation (pb-24)."
+  },
+  "motion": {
+    "transitions": "Specific property transitions only (e.g. transition-colors duration-200). DO NOT use 'transition: all'.",
+    "interactions": "Buttons scale slightly on active (active:scale-95). List items staggered fade-in.",
+    "numbers": "Count-up animations for main balances (Saldo, Dinheiro Livre) when mounted."
+  },
+  "accessibility": {
+    "contrast": "Ensure text meets APCA/WCAG AA standards. #FAFAFA on #09090B is highly legible. Avoid dark gray text on black backgrounds.",
+    "focus": "Clear focus rings on all inputs/buttons (focus-visible:ring-2 focus-visible:ring-[#CCFF00]).",
+    "testing": "All interactive elements MUST have data-testid attributes (e.g., data-testid='add-transaction-btn', data-testid='balance-amount')."
+  },
+  "media_and_icons": {
+    "icons_library": "lucide-react (Standard, clean, consistent line weights).",
+    "empty_states": "Use abstract minimalist SVGs or typography-driven empty states rather than generic vector illustrations."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.pexels.com/photos/28852712/pexels-photo-28852712.jpeg",
+      "category": "background",
+      "description": "Minimalist black sand texture, use as an extremely low opacity (10-15%) background image or hero section texture overlay to give depth."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1517167685284-96a27681ad75",
+      "category": "background_alt",
+      "description": "Dark blue crumpled paper background, can be used for abstract textured cards or auth screen backdrop."
+    }
+  ],
+  "instructions_to_main_agent": {
+    "setup": "Install JetBrains Mono and Outfit fonts. Configure Tailwind with specific brand colors.",
+    "architecture": "Build a responsive layout shell. Sidebar on md+ screens, Bottom Nav on small screens.",
+    "core_feature": "Build the 'Compromissos do Mês' interface with a top-level North Star metric (Dinheiro Livre / Free Money).",
+    "visual_distinction": "Implement the 'Previsto' (future) vs 'Realizado' (actual) styling exact specifications from this document.",
+    "form_elements": "Use Shadcn Form, Select, DatePicker components for transaction entries.",
+    "charts": "Integrate Shadcn Chart / Recharts for the 24-month projection."
+  },
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) only where appropriate (headers, bottom nav).",
+    "You MUST NOT apply universal transition (e.g. transition: all). This breaks transforms. Always add transitions for specific properties.",
+    "You MUST NOT center align the app container. Do not add '.App { text-align: center; }'.",
+    "Always use modern button styles with interaction animations.",
+    "NEVER use AI assistant Emoji characters (🤖🧠💡🔮) for icons. Use Lucide icons.",
+    "Every interaction needs micro-animations - hover states, transitions.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Use `sonner` for toasts. Location: /app/frontend/src/components/ui/sonner.js",
+    "Prioritize using pre-existing components from src/components/ui.",
+    "All interactive and key informational elements MUST include a `data-testid` attribute."
+  ]
+}
