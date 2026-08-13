@@ -143,6 +143,7 @@ class Occurrence(BaseDocument):
     competence: str
     due_date: datetime
     amount: float
+    amount_source: Literal["default", "override"] = "default"
     paid_amount: float = 0.0
     paid_at: Optional[datetime] = None
     sequence: Optional[int] = None

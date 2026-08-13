@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Link2, Snowflake, X } from "lucide-react";
+import { Link2, Pencil, Snowflake, X } from "lucide-react";
 import { apiError, brl, formatDate, http, shortCompetence, STATUS_META } from "@/lib/api";
 import { StatusBadge } from "@/components/ui-kit/Primitives";
+import { EditAmountDialog } from "@/components/EditAmountDialog";
 
 export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
   const queryClient = useQueryClient();
+  const [editTarget, setEditTarget] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["commitment", commitmentId],
@@ -135,7 +138,27 @@ export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
                     </span>
                     <span className="flex items-center gap-2">
                       <StatusBadge status={occ.status} meta={meta} />
+                      {occ.amount_source === "override" && (
+                        <span
+                          data-testid={`detail-override-${occ.id}`}
+                          title="Valor ajustado para este mês"
+                          className="rounded bg-[#ccff00]/15 px-1 py-0.5 text-[9px] font-medium text-[#ccff00]"
+                        >
+                          ajustado
+                        </span>
+                      )}
                       <span className="num text-zinc-100">{brl(occ.amount)}</span>
+                      {occ.status !== "paid" && occ.status !== "cancelled" &&
+                        occ.status !== "frozen" && (
+                        <button
+                          data-testid={`detail-edit-amount-${occ.id}`}
+                          onClick={() => setEditTarget(occ)}
+                          title="Editar valor"
+                          className="rounded-md border border-zinc-700 p-1 text-zinc-400 transition-colors hover:border-[#ccff00]/40 hover:text-[#ccff00]"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
                     </span>
                   </div>
                 );
@@ -144,6 +167,7 @@ export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
           </>
         )}
       </div>
+      <EditAmountDialog target={editTarget} onClose={() => setEditTarget(null)} />
     </div>
   );
 };

@@ -127,6 +127,17 @@ backend:
         -working: true
         -agent: "main"
         -comment: "ETAPA 2 is frontend-only (uses existing endpoints POST /accounts and POST /commitments). 20/20 business rule unit tests pass. No engine/ACID/projection/AI changes."
+  - task: "Dynamic occurrence amounts — PATCH /api/occurrences/{id} (single | this_and_future | default)"
+    implemented: true
+    working: true
+    file: "backend/ff/services/occurrence_service.py, backend/ff/api/engine.py, backend/ff/services/commitment_service.py, backend/ff/models/entities.py, backend/ff/domain/month.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "ETAPA 3. New occurrence_service.update_occurrence_amount with 3 modes. Added Occurrence.amount_source ('default'|'override'). materialize() now treats amount+amount_source as INSERT-ONLY so customizations are never overwritten by future materializations. Ownership via repo scope; paid/cancelled/partially-paid rejected (409); amount validated >0/finite/<=1e11 (422); default mode rejected for installments (422). Recalculates affected invoices; all derived views recompute live from occurrence.amount. 16 new pytest tests + 20 existing pass (36/36)."
 
 frontend:
   - task: "Onboarding flow for users with no account"
@@ -180,15 +191,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Onboarding flow for users with no account"
-    - "Register 4 existing pages in router (Subscriptions, Frozen, Health, AiAnalyst)"
-    - "Full navigation (desktop sidebar + mobile bottom nav with 'Mais')"
+    - "Dynamic occurrence amounts — PATCH /api/occurrences/{id} (single | this_and_future | default)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
     -agent: "main"
-    -message: "ETAPA 2 implemented (frontend only). Please test: (1) NEW user onboarding — register a fresh unique email via the UI toggle to register mode, then verify welcome -> account -> income-ask -> (skip and also try filling income) -> lands on Dashboard; (2) existing user demo@futureflex.dev / Demo@2026 does NOT see onboarding and lands on Dashboard; (3) all 4 new routes open by URL and via nav: /assinaturas /congelados /saude /analista-ia; (4) desktop sidebar shows all 12 items and Compromissos is highlighted; (5) mobile (viewport ~390x844) bottom nav shows Inicio, Transacoes, Compromissos (center), Contas, Mais; the 'Mais' button opens a sheet with Cartoes, Terceiros, Assinaturas, Congelados, Saude, Projecao, Simulador, Analista IA and a Registrar button. Credentials in /app/memory/test_credentials.md. onboarding_test@futureflex.dev/Onb@2026x starts with zero accounts (but note: once it creates an account it won't show onboarding again — prefer registering a brand-new email for the onboarding-completion test). Do NOT test payment/dynamic-values (not in scope for ETAPA 2)."
+    -message: "ETAPA 3 backend implemented. New endpoint PATCH /api/occurrences/{occurrence_id} with body {\"amount\": number, \"mode\": \"single\"|\"this_and_future\"|\"default\"}. Please verify via API using demo@futureflex.dev / Demo@2026 OR a fresh registered user. Key rules to validate: (1) single changes only the selected occurrence; (2) this_and_future changes target + future occurrences of same commitment but preserves months already customized (amount_source=override); (3) default changes commitment default and only future non-overridden occurrences, preserving overrides and never touching paid/historical; (4) paid occurrence returns 409; (5) another user's occurrence returns 404; (6) amount<=0/invalid returns 422; (7) default mode on an installment commitment returns 422; (8) after edit, GET /months/{competence}, /free-money, /projection reflect the new amount (single source of truth); (9) after POST /commitments/materialize, an overridden amount is NOT reset. NOTE: I already ran 36 pytest tests (16 new in tests/test_dynamic_amounts.py + 20 existing) — all pass. Do NOT modify code; just report. Recommended flow: create a recurring fixed_expense (type=fixed_expense, payment_method=account, total_amount=750) which materializes 24 monthly occurrences, then exercise the modes."
     -agent: "testing"
     -message: "ETAPA 2 TESTING COMPLETE — ALL TESTS PASSED ✅. Comprehensive testing performed with 6 test scenarios covering all requirements. (1) Existing user flow: demo@futureflex.dev logs in and lands on Dashboard without seeing onboarding. (2) Desktop navigation: All 12 sidebar items visible and functional, Compromissos properly highlighted with #ccff00 accent. All 4 new pages (Subscriptions, Frozen, Health, AI Analyst) accessible via both sidebar navigation and direct URLs. (3) New user onboarding with income: Registered fresh user onbtest+1786593478@futureflex.dev, completed full onboarding flow (welcome -> account creation -> income form), landed on Dashboard with correct data. (4) Onboarding idempotent: Page reload confirmed onboarding does not appear again for users with accounts. (5) Skip income path: Registered onbtest+1786593502@futureflex.dev, completed account step, skipped income, successfully landed on Dashboard. (6) Mobile navigation: Bottom nav shows all 5 items correctly, Compromissos center button works, 'Mais' sheet opens with all 8 nav items + Registrar button, navigation from sheet works and closes properly. No console errors, all data-testids present and functional. Screenshots captured for all key flows. ETAPA 2 is production-ready."

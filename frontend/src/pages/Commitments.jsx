@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Snowflake, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Snowflake, X } from "lucide-react";
 import { apiError, brl, competenceLabel, formatDate, http, STATUS_META } from "@/lib/api";
 import { useMonth } from "@/contexts/MonthContext";
 import { MonthSwitcher } from "@/components/layout/MonthSwitcher";
@@ -10,12 +10,14 @@ import {
 } from "@/components/ui-kit/Primitives";
 import { CommitmentDetailDrawer } from "@/components/CommitmentDetailDrawer";
 import { PayDialog } from "@/components/PayDialog";
+import { EditAmountDialog } from "@/components/EditAmountDialog";
 
 export default function Commitments() {
   const { competence } = useMonth();
   const [openGroups, setOpenGroups] = useState({});
   const [detailId, setDetailId] = useState(null);
   const [payTarget, setPayTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["month", competence],
@@ -172,7 +174,27 @@ export default function Commitments() {
                             >
                               {item.direction === "inflow" ? "+" : ""}
                               {brl(item.amount)}
+                              {item.amount_source === "override" && (
+                                <span
+                                  data-testid={`occurrence-override-${item.id}`}
+                                  title="Valor ajustado para este mês"
+                                  className="ml-1.5 rounded bg-[#ccff00]/15 px-1 py-0.5 text-[9px] font-medium text-[#ccff00] align-middle"
+                                >
+                                  ajustado
+                                </span>
+                              )}
                             </span>
+                            {item.status !== "paid" && item.status !== "cancelled" &&
+                              item.status !== "frozen" && (
+                              <button
+                                data-testid={`edit-amount-btn-${item.id}`}
+                                onClick={() => setEditTarget(item)}
+                                title="Editar valor"
+                                className="rounded-md border border-zinc-700 p-1.5 text-zinc-400 transition-colors hover:border-[#ccff00]/40 hover:text-[#ccff00]"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            )}
                             {item.status !== "paid" && item.status !== "frozen" && item.counts_in_total && (
                               <button
                                 data-testid={`pay-btn-${item.id}`}
@@ -196,6 +218,7 @@ export default function Commitments() {
 
       <CommitmentDetailDrawer commitmentId={detailId} onClose={() => setDetailId(null)} />
       <PayDialog target={payTarget} onClose={() => setPayTarget(null)} />
+      <EditAmountDialog target={editTarget} onClose={() => setEditTarget(null)} />
     </div>
   );
 }

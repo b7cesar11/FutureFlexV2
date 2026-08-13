@@ -95,6 +95,7 @@ def serialize_item(o) -> dict:
         "direction": o.direction,
         "label": o.label,
         "amount": o.amount,
+        "amount_source": getattr(o, "amount_source", "default"),
         "paid_amount": o.paid_amount,
         "competence": o.competence,
         "due_date": o.due_date,

@@ -8,8 +8,8 @@ from ..domain import status as st
 from ..domain.calendar_rules import competence_of, today_utc
 from ..models.base import stringify_ids
 from ..repositories import registry as repo
-from ..services import (commitment_service, month_service, payment_service,
-                        simulation_service, third_party_service)
+from ..services import (commitment_service, month_service, occurrence_service,
+                        payment_service, simulation_service, third_party_service)
 
 router = APIRouter(tags=["motor"])
 
@@ -131,6 +131,21 @@ async def list_occurrences(competence: str | None = None, group: str | None = No
     if status:
         items = [o for o in items if o.status == status]
     return [month_rules.serialize_item(o) for o in items]
+
+
+@router.patch("/occurrences/{occurrence_id}")
+async def update_occurrence(occurrence_id: str, payload: dict,
+                            user_id: str = Depends(current_user_id)):
+    """Altera o valor de uma ocorrencia (valores dinamicos por competencia).
+
+    payload: {"amount": number, "mode": "single" | "this_and_future" | "default"}
+    """
+    async with UnitOfWork() as uow:
+        return await occurrence_service.update_occurrence_amount(
+            user_id, occurrence_id,
+            amount=payload.get("amount"),
+            mode=payload.get("mode", "single"),
+            session=uow.session)
 
 
 @router.post("/occurrences/{occurrence_id}/pay")

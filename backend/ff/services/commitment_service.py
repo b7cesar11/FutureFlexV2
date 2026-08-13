@@ -176,8 +176,12 @@ async def materialize(user_id: str, commitment: Commitment, session=None) -> int
         doc = occ.to_mongo()
         key = {"user_id": ObjectId(user_id), "commitment_id": ObjectId(commitment.id),
                "competence": comp, "sequence": seq}
+        # amount e amount_source sao INSERT-ONLY: materializacoes futuras nunca
+        # sobrescrevem valores ja existentes (protege customizacoes por competencia).
         insert_only = {"created_at": doc.pop("created_at"), "paid_amount": doc.pop("paid_amount"),
-                       "paid_at": doc.pop("paid_at"), "state": doc.pop("state")}
+                       "paid_at": doc.pop("paid_at"), "state": doc.pop("state"),
+                       "amount": doc.pop("amount"),
+                       "amount_source": doc.pop("amount_source", "default")}
         for k in ("user_id", "commitment_id", "competence", "sequence"):
             doc.pop(k, None)
         ops.append(UpdateOne(key, {"$set": doc, "$setOnInsert": insert_only}, upsert=True))
