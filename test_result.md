@@ -105,6 +105,17 @@
 user_problem_statement: "FutureFlex V2 continuation. ETAPA 2 — Onboarding + Navigation. Recover existing project (no rebuild). Register 4 existing pages (Subscriptions, Frozen, Health, AiAnalyst) into router + navigation. Add onboarding for users with no financial account (reuse Account entity, idempotent). Full sidebar (desktop) and bottom nav + 'Mais' (mobile) with Compromissos highlighted. Do not change financial engine / ACID / 24-month projection / AI integration."
 
 backend:
+  - task: "ETAPA 6 QA — FIX multi-card invoice occurrence collision (uniq_occurrence_slot)"
+    implemented: true
+    working: "NA"
+    file: "backend/ff/core/db.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "PROVEN BUG found during ETAPA 6 QA and fixed minimally (BLOCO 25). ROOT CAUSE: unique index 'uniq_occurrence_slot' was {user_id, commitment_id, competence, sequence}. Invoice aggregator occurrences (kind='invoice') are created with commitment_id=None and sequence=None, so two credit cards with an invoice in the SAME competence produced the SAME slot key -> pymongo E11000 DuplicateKeyError -> HTTP 500. Reproduced with a BRAND-NEW user: create 2 cards + 1 purchase each -> 2nd purchase returned 500 (only 1 invoice created). Affects ANY user with 2+ credit cards (not demo-specific; NOT caused by Etapa 5). FIX: added 'refs.invoice_id' to the unique index. Materialization idempotency + anti-duplicate preserved (invoice_id deterministic per commitment/competence). NO change to card calculation, anti-double-count, or Commitment->Occurrence->Transaction. Post-fix: multi-card repro PASSES, pytest 36/36, backend_test.py 14/14. Demo reset to pristine seeded state."
   - task: "Environment recovery (.env recreated) + MongoDB replica set rs0 restored"
     implemented: true
     working: true
@@ -249,7 +260,8 @@ metadata:
   run_ui: true
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "ETAPA 6 QA — FIX multi-card invoice occurrence collision (uniq_occurrence_slot)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

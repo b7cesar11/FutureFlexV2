@@ -44,8 +44,18 @@ async def ensure_indexes():
     await db.occurrences.create_index([("user_id", 1), ("refs.invoice_id", 1)])
     await db.occurrences.create_index([("user_id", 1), ("refs.person_id", 1), ("state", 1)])
     await db.occurrences.create_index([("user_id", 1), ("kind", 1), ("competence", 1)])
+    # Slot unico da ocorrencia. Inclui refs.invoice_id para que ocorrencias agregadoras
+    # de fatura (kind="invoice", commitment_id=None, sequence=None) de CARTOES DIFERENTES
+    # na MESMA competencia nao colidam (bug multi-cartao). Para ocorrencias de compromisso
+    # o invoice_id e deterministico por (compromisso, competencia), preservando a
+    # idempotencia da materializacao e a protecao contra duplicatas.
+    try:
+        await db.occurrences.drop_index("uniq_occurrence_slot")
+    except Exception:
+        pass
     await db.occurrences.create_index(
-        [("user_id", 1), ("commitment_id", 1), ("competence", 1), ("sequence", 1)],
+        [("user_id", 1), ("commitment_id", 1), ("competence", 1), ("sequence", 1),
+         ("refs.invoice_id", 1)],
         unique=True, name="uniq_occurrence_slot")
 
     await db.invoices.create_index(
