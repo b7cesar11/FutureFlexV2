@@ -72,3 +72,13 @@ Frontend (React) → API → Application Services (UnitOfWork/ACID) → Domain (
 
 ## Próximas tarefas
 Aguardando o usuário priorizar entre Assinaturas, Health Score, Metas/Investimentos e IA.
+
+
+---
+## ETAPA 2 — Onboarding + Navegação (CONCLUÍDA — 2026-08-13)
+- Ambiente recuperado: .env recriados; replica set rs0 (mongodb-rs) ativo; ACID=True.
+- Onboarding para usuário sem conta (reusa Account; idempotente): pages/Onboarding.jsx.
+- 4 páginas registradas no router: /assinaturas /congelados /saude /analista-ia.
+- Navegação completa: sidebar desktop (12 itens, Compromissos destacado) + bottom nav mobile com botão "Mais".
+- Testes: 20/20 unit de negócio OK; frontend testing agent 6/6 cenários OK; build OK.
+- Sem alteração no motor financeiro / ACID / projeção 24m / IA.
