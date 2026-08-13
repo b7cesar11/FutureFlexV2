@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Backend URL from frontend/.env
-BASE_URL = "https://fintech-validation.preview.emergentagent.com/api"
+BASE_URL = "https://5e88b598-cbef-4739-9a5d-a884398bfa5d.preview.emergentagent.com/api"
 
 # Test credentials
 DEMO_EMAIL = "demo@futureflex.dev"

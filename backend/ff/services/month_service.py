@@ -72,6 +72,7 @@ async def dashboard(user_id: str) -> dict:
         "committed": month["committed"],
         "paid": month["paid"],
         "pending": month["pending"],
+        "overdue": month["overdue"],
         "progress_pct": month["progress_pct"],
         "commitment_ratio_pct": month["commitment_ratio_pct"],
         "accounts": [{"id": a.id, "name": a.name, "balance": a.current_balance,
