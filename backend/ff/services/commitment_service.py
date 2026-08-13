@@ -138,6 +138,13 @@ async def materialize(user_id: str, commitment: Commitment, session=None) -> int
                 due = card_cycle.due_date_for(comp, card.closing_day, card.due_day)
             slots.append((comp, due, commitment.installment_amount, None))
 
+    # ocorrencias ja liquidadas/canceladas sao IMUTAVEIS: preservam historico
+    settled = await repo.occurrences.find(user_id,
+                                         {"commitment_id": commitment.id,
+                                          "state": {"$ne": "open"}}, session=session)
+    frozen_slots = {(o.competence, o.sequence) for o in settled}
+    slots = [s for s in slots if (s[0], s[3]) not in frozen_slots]
+
     ops = []
     invoice_by_comp = {}
     if card:
@@ -177,7 +184,7 @@ async def materialize(user_id: str, commitment: Commitment, session=None) -> int
 
     if ops:
         await db.occurrences.bulk_write(ops, session=session, ordered=False)
-    last_comp = slots[-1][0] if slots else None
+    last_comp = slots[-1][0] if slots else commitment.materialized_until
     await repo.commitments.update(user_id, commitment.id,
                                  {"materialized_until": last_comp, "updated_at": now_utc()},
                                  session=session)
@@ -198,13 +205,15 @@ def _detail_for(commitment: Commitment) -> dict:
     return {}
 
 
-async def freeze(user_id: str, commitment_id: str, frozen: bool, session=None) -> dict:
+async def freeze(user_id: str, commitment_id: str, frozen: bool, session=None,
+                 reason: str | None = None) -> dict:
     commitment = await repo.commitments.get(user_id, commitment_id, session=session)
     if not commitment:
         raise DomainError("Compromisso não encontrado", 404)
     await repo.commitments.update(user_id, commitment_id,
                                  {"frozen": frozen,
                                   "frozen_at": now_utc() if frozen else None,
+                                  "freeze_reason": reason if frozen else None,
                                   "updated_at": now_utc()}, session=session)
     today = today_utc()
     result = await repo.occurrences.update_many(

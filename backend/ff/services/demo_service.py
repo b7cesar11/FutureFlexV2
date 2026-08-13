@@ -8,7 +8,8 @@ from ..domain.calendar_rules import competence_of, today_utc
 from ..models.base import now_utc
 from ..models.entities import Account, CreditCard, Person, User, UserProfile
 from ..repositories import registry as repo
-from . import commitment_service, seed_service, third_party_service
+from . import (commitment_service, seed_service, subscription_service,
+               third_party_service)
 
 logger = logging.getLogger("future_flex.demo")
 
@@ -68,9 +69,21 @@ async def _seed_financial_data(user_id: str):
             "category_id": by_name.get("Moradia")}, session=uow.session)
 
     async with UnitOfWork() as uow:
-        await commitment_service.create_commitment(user_id, {
-            "type": "subscription", "description": "Spotify", "total_amount": 21.90,
-            "payment_method": "credit_card", "credit_card_id": card.id, "day_of_month": 15,
+        await subscription_service.create(user_id, {
+            "name": "Spotify", "amount": 21.90, "periodicity": "monthly",
+            "billing_day": 15, "credit_card_id": card.id,
+            "category_id": by_name.get("Assinaturas")}, session=uow.session)
+
+    async with UnitOfWork() as uow:
+        await subscription_service.create(user_id, {
+            "name": "Netflix", "amount": 55.90, "periodicity": "monthly",
+            "billing_day": 20, "credit_card_id": card.id,
+            "category_id": by_name.get("Assinaturas")}, session=uow.session)
+
+    async with UnitOfWork() as uow:
+        await subscription_service.create(user_id, {
+            "name": "YouTube Premium", "amount": 24.90, "periodicity": "monthly",
+            "billing_day": 8, "credit_card_id": card.id,
             "category_id": by_name.get("Assinaturas")}, session=uow.session)
 
     async with UnitOfWork() as uow:

@@ -16,4 +16,9 @@ EMERGENT_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/o
 # Janela de materializacao de ocorrencias futuras (decisao do produto: 24 meses).
 PROJECTION_WINDOW_MONTHS = int(os.environ.get("PROJECTION_WINDOW_MONTHS", "24"))
 
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+AI_MODEL = os.environ.get("AI_MODEL", "gpt-5.5")
+AI_PROVIDER = "openai"
+AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "60"))
+
 APP_TZ = "America/Sao_Paulo"

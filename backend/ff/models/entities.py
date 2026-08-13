@@ -106,6 +106,7 @@ class Commitment(BaseDocument):
     origin_group: str = "fixed"
     frozen: bool = False
     frozen_at: Optional[datetime] = None
+    freeze_reason: Optional[str] = None
     status: Literal["active", "completed", "cancelled"] = "active"
     materialized_until: Optional[str] = None
     start_date: Optional[datetime] = None

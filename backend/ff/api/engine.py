@@ -84,9 +84,12 @@ async def commitment_detail(commitment_id: str, user_id: str = Depends(current_u
 
 
 @router.post("/commitments/{commitment_id}/freeze")
-async def freeze(commitment_id: str, user_id: str = Depends(current_user_id)):
+async def freeze(commitment_id: str, payload: dict | None = None,
+                 user_id: str = Depends(current_user_id)):
     async with UnitOfWork() as uow:
-        return await commitment_service.freeze(user_id, commitment_id, True, session=uow.session)
+        return await commitment_service.freeze(user_id, commitment_id, True,
+                                               session=uow.session,
+                                               reason=(payload or {}).get("reason"))
 
 
 @router.post("/commitments/{commitment_id}/unfreeze")

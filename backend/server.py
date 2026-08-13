@@ -13,6 +13,7 @@ from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 from ff.api import auth as auth_api  # noqa: E402
 from ff.api import catalog as catalog_api  # noqa: E402
 from ff.api import engine as engine_api  # noqa: E402
+from ff.api import insights as insights_api  # noqa: E402
 from ff.core.db import client, ensure_indexes  # noqa: E402
 from ff.services.demo_service import ensure_demo_user  # noqa: E402
 
@@ -32,6 +33,7 @@ async def root():
 
 api_router.include_router(auth_api.router)
 api_router.include_router(engine_api.router)
+api_router.include_router(insights_api.router)
 api_router.include_router(catalog_api.router)
 app.include_router(api_router)
 
