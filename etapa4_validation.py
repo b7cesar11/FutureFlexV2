@@ -6,7 +6,7 @@ import requests
 import json
 from datetime import datetime
 
-BASE_URL = "https://5e88b598-cbef-4739-9a5d-a884398bfa5d.preview.emergentagent.com/api"
+BASE_URL = "https://flex-qa-stage6.preview.emergentagent.com/api"
 DEMO_EMAIL = "demo@futureflex.dev"
 DEMO_PASSWORD = "Demo@2026"
 

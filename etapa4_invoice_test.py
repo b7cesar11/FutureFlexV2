@@ -5,7 +5,7 @@ ETAPA 4 Invoice Test: Verify invoice-child occurrence cannot be paid directly
 import requests
 from datetime import datetime
 
-BASE_URL = "https://5e88b598-cbef-4739-9a5d-a884398bfa5d.preview.emergentagent.com/api"
+BASE_URL = "https://flex-qa-stage6.preview.emergentagent.com/api"
 
 def register_user(email: str, password: str, name: str):
     response = requests.post(f"{BASE_URL}/auth/register",

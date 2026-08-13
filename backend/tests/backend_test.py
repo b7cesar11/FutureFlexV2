@@ -95,7 +95,9 @@ class TestDashboardSingleSource:
         d = r.json()
         assert d["balance"] == 7000.0
         assert d["income_expected"] == 5500.0
-        assert d["committed"] == 2221.9
+        # Seed: Aluguel 1800 + fatura 502.70 (iPhone 300 + Spotify 21.90 + Netflix 55.90
+        # + YouTube 24.90 + Ana 100) = 2302.70 (sem dupla contagem)
+        assert d["committed"] == 2302.7
         assert d["progress_pct"] == 0
 
     def test_dashboard_equals_month_view(self, demo):
@@ -121,13 +123,13 @@ class TestAntiDoubleCount:
         # groups is a list
         groups = _groups_dict(m)
         cards_total = groups.get("cards", {}).get("total", 0)
-        assert abs(cards_total - 421.9) < 0.01
+        assert abs(cards_total - 502.7) < 0.01
         for key in ("installments", "subscriptions"):
             g = groups.get(key)
             if g:
                 assert g.get("total", 0) == 0, f"group {key} total should be 0 (composes invoice); got {g}"
-        # Rent (fixed) = 1800 + invoice 421.9 = 2221.9
-        assert abs(m["committed"] - 2221.9) < 0.01
+        # Rent (fixed) = 1800 + invoice 502.7 = 2302.7
+        assert abs(m["committed"] - 2302.7) < 0.01
         # verify children (installments) marked counts_in_total=false
         agg_children = []
         for g in groups.values():
@@ -151,7 +153,7 @@ class TestInvoiceComposition:
         det = r.json()
         s = sum(it["amount"] for it in det["items"])
         assert abs(s - det["total"]) < 0.01
-        assert abs(det["total"] - 421.9) < 0.01
+        assert abs(det["total"] - 502.7) < 0.01
 
 
 # ---------- installments ----------
@@ -210,10 +212,18 @@ class TestInstallments:
 
 class TestPayInvoice:
     def test_pay_invoice_debits_chosen_account(self, newuser):
-        # Need commitment on card first
+        # Fresh user has no card/account by default — create them for this test.
         cards = newuser.get(f"{API}/credit-cards").json()
+        if not cards:
+            newuser.post(f"{API}/credit-cards", json={
+                "name": "TEST Card", "limit": 5000, "closing_day": 5, "due_day": 15})
+            cards = newuser.get(f"{API}/credit-cards").json()
         card_id = cards[0]["id"]
         accs = newuser.get(f"{API}/accounts").json()
+        if not accs:
+            newuser.post(f"{API}/accounts", json={
+                "name": "TEST Conta", "type": "checking", "opening_balance": 5000})
+            accs = newuser.get(f"{API}/accounts").json()
         acc_id = accs[0]["id"]
         before = accs[0]["current_balance"]
 
