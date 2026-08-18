@@ -24,6 +24,8 @@ services:
         value: futureflex_staging
       - key: JWT_SECRET
         generateValue: true
+      - key: PASSWORD_MIN_LENGTH
+        value: "15"
       - key: PROJECTION_WINDOW_MONTHS
         value: "24"
       - key: REQUIRE_REPLICA_SET
