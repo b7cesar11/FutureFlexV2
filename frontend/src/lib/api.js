@@ -9,9 +9,32 @@ export const API = BASE ? `${BASE}/api` : "/api";
 
 export const http = axios.create({ baseURL: API, withCredentials: true, timeout: 20000 });
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+let csrfToken = null;
+
+function captureCsrf(response) {
+  const token = response?.headers?.["x-csrf-token"];
+  if (typeof token === "string" && token) csrfToken = token;
+}
+
+http.interceptors.request.use((config) => {
+  const method = String(config.method || "GET").toUpperCase();
+  if (csrfToken && UNSAFE_METHODS.has(method)) {
+    config.headers = config.headers || {};
+    config.headers["X-CSRF-Token"] = csrfToken;
+  }
+  return config;
+});
+
 http.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    captureCsrf(response);
+    return response;
+  },
   (error) => {
+    // A rejected CSRF request returns a fresh/valid token so the next user action can
+    // recover without exposing the HttpOnly cookie to JavaScript.
+    captureCsrf(error.response);
     if (!error.response && error.code === "ECONNABORTED") {
       error.message = "O servidor demorou para responder. Tente novamente.";
     } else if (!error.response) {
