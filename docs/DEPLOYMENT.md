@@ -24,6 +24,9 @@ Nunca faça deploy de produção a partir de um commit com checks falhando.
 A CI atual valida:
 
 - guards de configuração de produção;
+- senha mínima de produção e compatibilidade de hashes antigos;
+- cookies Secure e CORS sem wildcard em produção;
+- ausência de access token no JSON de autenticação em produção;
 - vínculo/expiração do `state` do Google OAuth;
 - `render.yaml` sem segredos e com guards financeiros;
 - regras financeiras centrais;
@@ -79,6 +82,7 @@ O backend de staging já é configurado com:
 
 ```env
 APP_ENV=production
+PASSWORD_MIN_LENGTH=15
 PROJECTION_WINDOW_MONTHS=24
 REQUIRE_REPLICA_SET=true
 ENABLE_DEMO_USER=false
@@ -86,7 +90,7 @@ COOKIE_SECURE=true
 COOKIE_SAMESITE=none
 ```
 
-`APP_ENV=production` em staging é intencional: queremos testar os mesmos guards de segurança da produção.
+`APP_ENV=production` em staging é intencional: queremos testar os mesmos guards de segurança da produção. Com esse modo ativo, senhas novas abaixo de 15 caracteres, cookies não Secure e CORS wildcard são recusados pela configuração.
 
 ### Variáveis que precisam ser preenchidas manualmente
 
@@ -112,7 +116,7 @@ Depois de alterar `REACT_APP_BACKEND_URL`, reconstrua/republique o frontend porq
 
 ## 4. Smoke obrigatório no staging
 
-Use somente uma conta de teste descartável.
+Use somente uma conta de teste descartável e uma senha/frase-senha com 15 ou mais caracteres.
 
 Valide nesta ordem:
 
@@ -172,7 +176,19 @@ O backend protege o fluxo com:
 - validação do ID token e `email_verified`;
 - proteção contra substituição silenciosa de `google_sub` já vinculado.
 
-## 7. Promoção para produção
+## 7. Sessão e senha em produção
+
+Em `APP_ENV=production`:
+
+- login/cadastro mantêm access/refresh tokens em cookies HttpOnly;
+- o access token não é devolvido no JSON de autenticação;
+- cookies de autenticação devem ser `Secure`;
+- `PASSWORD_MIN_LENGTH` não pode ser menor que 15;
+- o registro aceita frases-senha longas sem exigir classes artificiais de caracteres;
+- hashes novos usam esquema versionado `bcrypt_sha256`;
+- hashes bcrypt existentes continuam válidos e são atualizados quando o usuário autentica com sucesso.
+
+## 8. Promoção para produção
 
 Antes de dados reais:
 
@@ -210,13 +226,14 @@ COOKIE_SAMESITE=lax
 
 O staging com dois domínios `*.onrender.com` usa `SameSite=none` + `Secure` porque os sites são cross-site. Na topologia final sob o mesmo domínio registrável, volte para `SameSite=lax`.
 
-## 8. Variáveis obrigatórias de produção
+## 9. Variáveis obrigatórias de produção
 
 ```env
 APP_ENV=production
 MONGO_URL=<secret>
 DB_NAME=futureflex
 JWT_SECRET=<secret aleatório 32+ caracteres>
+PASSWORD_MIN_LENGTH=15
 PROJECTION_WINDOW_MONTHS=24
 REQUIRE_REPLICA_SET=true
 ENABLE_DEMO_USER=false
@@ -237,7 +254,7 @@ GOOGLE_CLIENT_SECRET=<secret>
 GOOGLE_REDIRECT_URI=https://api.seudominio.com/api/auth/google/callback
 ```
 
-## 9. Backups
+## 10. Backups
 
 Antes do uso real, exija pelo menos:
 
@@ -251,7 +268,7 @@ Antes do uso real, exija pelo menos:
 
 Um backup que nunca foi restaurado ainda não é uma garantia operacional.
 
-## 10. Segredos
+## 11. Segredos
 
 Nunca versionar:
 
@@ -263,7 +280,7 @@ Nunca versionar:
 
 Use sempre o secret manager do provedor.
 
-## 11. Go / No-Go
+## 12. Go / No-Go
 
 **GO para staging:** CI verde + Atlas de teste + variáveis do Blueprint preenchidas.
 
