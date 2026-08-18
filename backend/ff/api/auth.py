@@ -11,9 +11,9 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, EmailStr
 
-from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, FRONTEND_URL, GOOGLE_CLIENT_ID,
-                           GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, JWT_ALGORITHM,
-                           JWT_SECRET)
+from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, EXPOSE_ACCESS_TOKEN_IN_RESPONSE,
+                           FRONTEND_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+                           GOOGLE_REDIRECT_URI, JWT_ALGORITHM, JWT_SECRET)
 from ..core.db import db
 from ..core.deps import get_current_user
 from ..core.security import (clear_auth_cookies, create_access_token, create_refresh_token,
@@ -51,6 +51,15 @@ def public_user(user: dict) -> dict:
         "preferences": user.get("preferences", {}),
         "auth_providers": user.get("auth_providers", []),
     }
+
+
+def _auth_response(user: dict, access_token: str) -> dict:
+    data = public_user(user)
+    if EXPOSE_ACCESS_TOKEN_IN_RESPONSE:
+        # Kept only for non-production regression/API tooling. Production browser
+        # sessions keep the token exclusively in HttpOnly cookies.
+        data["access_token"] = access_token
+    return data
 
 
 def _build_google_state() -> str:
@@ -166,8 +175,7 @@ async def register(payload: RegisterIn, response: Response):
     access = create_access_token(user_id, email)
     set_auth_cookies(response, access, create_refresh_token(user_id))
     doc["_id"] = user_id
-    # Auth tokens intentionally remain only in HttpOnly cookies for browser clients.
-    return public_user(doc)
+    return _auth_response(doc, access)
 
 
 @router.post("/login")
@@ -195,7 +203,7 @@ async def login(payload: LoginIn, request: Request, response: Response):
     user_id = str(user["_id"])
     access = create_access_token(user_id, email)
     set_auth_cookies(response, access, create_refresh_token(user_id))
-    return public_user(user)
+    return _auth_response(user, access)
 
 
 @router.get("/google/start")
