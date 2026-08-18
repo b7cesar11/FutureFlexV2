@@ -6,6 +6,11 @@ on:
     paths:
       - frontend/package.json
       - .github/workflows/audit-lockfile-refresh.yml
+  pull_request:
+    branches: [agent/release-v1-hardening]
+    paths:
+      - frontend/package.json
+      - .github/workflows/audit-lockfile-refresh.yml
 
 permissions:
   contents: write
