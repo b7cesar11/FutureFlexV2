@@ -19,11 +19,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // CRITICAL: se voltando do callback OAuth, o AuthCallback estabelece a sessao primeiro.
-    if (window.location.hash?.includes("session_id=")) {
-      setLoading(false);
-      return;
-    }
     checkAuth();
   }, [checkAuth]);
 
