@@ -108,10 +108,10 @@ jobs:
           node-version: "20"
 
       - name: Install frontend dependencies
-        run: npm install --no-audit --no-fund
+        run: yarn install --non-interactive
 
       - name: Build frontend
         env:
           CI: "false"
           REACT_APP_BACKEND_URL: ""
-        run: npm run build
+        run: yarn build
