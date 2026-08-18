@@ -15,6 +15,7 @@ from ff.api import engine as engine_api  # noqa: E402
 from ff.api import insights as insights_api  # noqa: E402
 from ff.core.config import (CORS_ORIGINS, ENABLE_DEMO_USER, REQUIRE_REPLICA_SET,
                             validate_runtime_config)  # noqa: E402
+from ff.core.csrf import CSRF_HEADER_NAME, CSRFMiddleware  # noqa: E402
 from ff.core.db import client, ensure_indexes  # noqa: E402
 from ff.services.demo_service import ensure_demo_user  # noqa: E402
 
@@ -49,6 +50,10 @@ api_router.include_router(insights_api.router)
 api_router.include_router(catalog_api.router)
 app.include_router(api_router)
 
+# Cookie-authenticated mutations must carry a signed, session-bound CSRF token.
+# This middleware is added before CORS so CORS remains the outer browser boundary.
+app.add_middleware(CSRFMiddleware)
+
 if CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -56,6 +61,7 @@ if CORS_ORIGINS:
         allow_origins=list(CORS_ORIGINS),
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=[CSRF_HEADER_NAME],
     )
 
 
