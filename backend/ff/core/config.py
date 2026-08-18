@@ -47,14 +47,11 @@ EMERGENT_SESSION_DATA_URL = os.environ.get(
 # Janela de materializacao de ocorrencias futuras (decisao do produto: 24 meses).
 PROJECTION_WINDOW_MONTHS = int(os.environ.get("PROJECTION_WINDOW_MONTHS", "24"))
 
-# AI can run directly with OpenAI outside Emergent. The old key remains a fallback only.
+# AI can use a direct OpenAI key outside Emergent. The old key remains a fallback.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
 AI_MODEL = os.environ.get("AI_MODEL", "gpt-5.5").strip()
-AI_PROVIDER = os.environ.get(
-    "AI_PROVIDER",
-    "openai" if OPENAI_API_KEY else ("emergent" if EMERGENT_LLM_KEY else "disabled"),
-).strip().lower()
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").strip().lower()
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "60"))
 
 APP_TZ = "America/Sao_Paulo"
