@@ -93,6 +93,14 @@ test("new user can register, onboard, reload and reach commitments", async ({ pa
   await expect(page.getByTestId("metric-balance")).toContainText("2.500");
   await expect(page.getByTestId("free-money-card")).toBeVisible();
 
+  // Ambient auth cookies alone are not enough to mutate financial state.
+  const forged = await page.request.post(`${API_BASE}/accounts`, {
+    data: { name: "Conta CSRF forjada", type: "checking", opening_balance: 9999 },
+  });
+  expect(forged.status()).toBe(403);
+  expect((await forged.json()).detail).toContain("CSRF");
+  expect(await apiJson(page, "/accounts")).toHaveLength(1);
+
   // Onboarding must be idempotent after the first account exists.
   await page.reload();
   await expect(page.getByTestId("dashboard-page")).toBeVisible();
