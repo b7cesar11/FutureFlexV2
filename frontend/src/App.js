@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,6 @@ import { QuickAddDrawer } from "@/components/QuickAddDrawer";
 import { MonthSwitcher } from "@/components/layout/MonthSwitcher";
 import { http } from "@/lib/api";
 import Login from "@/pages/Login";
-import AuthCallback from "@/pages/AuthCallback";
 import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import Commitments from "@/pages/Commitments";
@@ -86,16 +85,12 @@ const Gate = () => {
   return <Shell />;
 };
 
-const AppRouter = () => {
-  const location = useLocation();
-  if (location.hash?.includes("session_id=")) return <AuthCallback />;
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/*" element={<Gate />} />
-    </Routes>
-  );
-};
+const AppRouter = () => (
+  <Routes>
+    <Route path="/login" element={<Login />} />
+    <Route path="/*" element={<Gate />} />
+  </Routes>
+);
 
 export default function App() {
   return (
