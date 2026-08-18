@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 function uniqueEmail() {
-  return `release-${Date.now()}-${Math.random().toString(16).slice(2)}@futureflex.test`;
+  return `futureflex.release.${Date.now()}.${Math.random().toString(16).slice(2)}@gmail.com`;
 }
 
 test("new user can register, onboard, reload and reach commitments", async ({ page }) => {
