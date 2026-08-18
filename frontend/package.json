@@ -123,7 +123,7 @@
     "**/webpack-dev-server/ws": "8.21.0",
     "**/postcss-load-config/yaml": "2.8.3",
     "**/cosmiconfig/yaml": "1.10.3",
-    "**/cssnano/yaml": "2.8.3",
+    "**/cssnano/yaml": "1.10.3",
     "**/eslint/js-yaml": "4.3.0",
     "**/@eslint/eslintrc/js-yaml": "4.3.0",
     "**/svgo/js-yaml": "3.15.0",
