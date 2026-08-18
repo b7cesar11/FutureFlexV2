@@ -11,41 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lockfile-bootstrap:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/release-v1-hardening'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Generate current dependency lockfile
-        run: yarn install --non-interactive
-
-      - name: Commit lockfile once
-        run: |
-          if [ -n "$(git status --porcelain -- yarn.lock)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add yarn.lock
-            git commit -m "chore: lock frontend dependencies"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          else
-            echo "frontend/yarn.lock already matches package.json"
-          fi
-
   backend-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -141,9 +106,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
 
       - name: Install frontend dependencies
-        run: yarn install --non-interactive
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Build frontend
         env:
@@ -218,10 +185,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: yarn install --non-interactive
+        run: yarn install --frozen-lockfile --non-interactive
 
       - name: Install Chromium
         working-directory: frontend
