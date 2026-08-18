@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,6 +13,8 @@ from ff.api import auth as auth_api  # noqa: E402
 from ff.api import catalog as catalog_api  # noqa: E402
 from ff.api import engine as engine_api  # noqa: E402
 from ff.api import insights as insights_api  # noqa: E402
+from ff.core.config import (CORS_ORIGINS, ENABLE_DEMO_USER, REQUIRE_REPLICA_SET,
+                            validate_runtime_config)  # noqa: E402
 from ff.core.db import client, ensure_indexes  # noqa: E402
 from ff.services.demo_service import ensure_demo_user  # noqa: E402
 
@@ -31,31 +32,53 @@ async def root():
     return {"app": "Future Flex V2", "status": "ok"}
 
 
+@api_router.get("/health")
+async def health():
+    hello = await client.admin.command("hello")
+    return {
+        "status": "ok",
+        "mongo": "ok",
+        "replica_set": hello.get("setName"),
+        "transactions_available": bool(hello.get("setName")),
+    }
+
+
 api_router.include_router(auth_api.router)
 api_router.include_router(engine_api.router)
 api_router.include_router(insights_api.router)
 api_router.include_router(catalog_api.router)
 app.include_router(api_router)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_credentials=True,
+        allow_origins=list(CORS_ORIGINS),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.on_event("startup")
 async def on_startup():
+    validate_runtime_config()
     await ensure_indexes()
     hello = await client.admin.command("hello")
-    logger.info("MongoDB replicaSet=%s transacoes_acid=%s", hello.get("setName"),
-                bool(hello.get("setName")))
-    try:
-        await ensure_demo_user()
-    except Exception as exc:  # observabilidade: nunca falhar silenciosamente
-        logger.error("Falha ao preparar conta demo: %s", exc)
+    replica_set = hello.get("setName")
+    transactions_available = bool(replica_set)
+    logger.info("MongoDB replicaSet=%s transacoes_acid=%s", replica_set,
+                transactions_available)
+    if REQUIRE_REPLICA_SET and not transactions_available:
+        raise RuntimeError(
+            "MongoDB precisa rodar como replica set para garantir transações ACID. "
+            "Configure rs0 ou defina REQUIRE_REPLICA_SET=false apenas para diagnóstico."
+        )
+    if ENABLE_DEMO_USER:
+        try:
+            await ensure_demo_user()
+        except Exception as exc:
+            logger.error("Falha ao preparar conta demo: %s", exc)
+            raise
 
 
 @app.on_event("shutdown")
