@@ -1,9 +1,25 @@
 import axios from "axios";
 
-const BASE = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BASE}/api`;
+const configuredBase = (process.env.REACT_APP_BACKEND_URL || "").trim();
 
-export const http = axios.create({ baseURL: API, withCredentials: true });
+// Same-origin is the safest production default when frontend and backend share a host.
+// For split deployments, set REACT_APP_BACKEND_URL explicitly (e.g. https://api.example.com).
+const BASE = configuredBase.replace(/\/$/, "");
+export const API = BASE ? `${BASE}/api` : "/api";
+
+export const http = axios.create({ baseURL: API, withCredentials: true, timeout: 20000 });
+
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (!error.response && error.code === "ECONNABORTED") {
+      error.message = "O servidor demorou para responder. Tente novamente.";
+    } else if (!error.response) {
+      error.message = "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.";
+    }
+    return Promise.reject(error);
+  },
+);
 
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Algo deu errado. Tente novamente.";
