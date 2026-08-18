@@ -11,8 +11,9 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, EmailStr
 
-from ..core.config import (FRONTEND_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-                           GOOGLE_REDIRECT_URI, JWT_ALGORITHM, JWT_SECRET)
+from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, FRONTEND_URL, GOOGLE_CLIENT_ID,
+                           GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, JWT_ALGORITHM,
+                           JWT_SECRET)
 from ..core.db import db
 from ..core.deps import get_current_user
 from ..core.security import (clear_auth_cookies, create_access_token, create_refresh_token,
@@ -25,6 +26,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 MAX_ATTEMPTS = 5
 LOCK_MINUTES = 15
+GOOGLE_OAUTH_STATE_COOKIE = "ff_google_oauth_state"
+GOOGLE_OAUTH_STATE_TTL_SECONDS = 10 * 60
 
 
 class RegisterIn(BaseModel):
@@ -49,6 +52,53 @@ def public_user(user: dict) -> dict:
     }
 
 
+def _build_google_state() -> str:
+    return jwt.encode(
+        {
+            "type": "google_oauth_state",
+            "nonce": secrets.token_urlsafe(16),
+            "exp": now_utc() + timedelta(seconds=GOOGLE_OAUTH_STATE_TTL_SECONDS),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def _validate_google_state(state: str, cookie_state: str | None) -> dict:
+    # A signed state by itself is not enough: it must also be the exact state placed
+    # in the browser that initiated the OAuth flow (double-submit cookie binding).
+    if not cookie_state or not secrets.compare_digest(state, cookie_state):
+        raise HTTPException(status_code=400, detail="Estado OAuth não corresponde à sessão iniciada")
+    try:
+        payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "google_oauth_state" or not payload.get("nonce"):
+            raise ValueError("state type/nonce")
+        return payload
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Estado OAuth inválido ou expirado") from exc
+
+
+def _set_google_state_cookie(response: Response, state: str) -> None:
+    response.set_cookie(
+        GOOGLE_OAUTH_STATE_COOKIE,
+        state,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=GOOGLE_OAUTH_STATE_TTL_SECONDS,
+        path="/api/auth/google",
+    )
+
+
+def _clear_google_state_cookie(response: Response) -> None:
+    response.delete_cookie(
+        GOOGLE_OAUTH_STATE_COOKIE,
+        path="/api/auth/google",
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+    )
+
+
 async def _check_lockout(identifier: str):
     doc = await db.login_attempts.find_one({"identifier": identifier})
     if not doc:
@@ -71,6 +121,9 @@ async def _upsert_google_user(data: dict) -> dict:
 
     user = await db.users.find_one({"email": email})
     if user:
+        existing_google_sub = str(user.get("google_sub") or "").strip()
+        if existing_google_sub and existing_google_sub != google_sub:
+            raise HTTPException(status_code=409, detail="E-mail já vinculado a outra identidade Google")
         providers = set(user.get("auth_providers", [])) | {"google"}
         await db.users.update_one({"_id": user["_id"]}, {"$set": {
             "google_sub": google_sub,
@@ -134,15 +187,7 @@ async def login(payload: LoginIn, request: Request, response: Response):
 async def google_start():
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=503, detail="Login com Google ainda não configurado")
-    state = jwt.encode(
-        {
-            "type": "google_oauth_state",
-            "nonce": secrets.token_urlsafe(16),
-            "exp": now_utc() + timedelta(minutes=10),
-        },
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
-    )
+    state = _build_google_state()
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
@@ -152,27 +197,27 @@ async def google_start():
         "include_granted_scopes": "true",
         "prompt": "select_account",
     }
-    return RedirectResponse(
+    response = RedirectResponse(
         url=f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}",
         status_code=302,
     )
+    _set_google_state_cookie(response, state)
+    return response
 
 
 @router.get("/google/callback")
-async def google_callback(code: str | None = None, state: str | None = None,
+async def google_callback(request: Request, code: str | None = None, state: str | None = None,
                           error: str | None = None):
     if error:
-        return RedirectResponse(f"{FRONTEND_URL}/login?oauth_error=1", status_code=302)
+        response = RedirectResponse(f"{FRONTEND_URL}/login?oauth_error=1", status_code=302)
+        _clear_google_state_cookie(response)
+        return response
     if not code or not state:
         raise HTTPException(status_code=400, detail="Callback do Google incompleto")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise HTTPException(status_code=503, detail="Login com Google ainda não configurado")
-    try:
-        state_payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if state_payload.get("type") != "google_oauth_state":
-            raise ValueError("state type")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Estado OAuth inválido ou expirado") from exc
+
+    _validate_google_state(state, request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE))
 
     async with httpx.AsyncClient(timeout=20) as client:
         token_response = await client.post(
@@ -204,6 +249,7 @@ async def google_callback(code: str | None = None, state: str | None = None,
     response = RedirectResponse(url=f"{FRONTEND_URL}/", status_code=302)
     set_auth_cookies(response, create_access_token(user_id, user["email"]),
                      create_refresh_token(user_id))
+    _clear_google_state_cookie(response)
     return response
 
 
