@@ -46,7 +46,7 @@ Mais detalhes: `docs/ARCHITECTURE.md`.
 
 - Python 3.11+
 - Node.js 20+
-- npm ou Yarn
+- npm
 - MongoDB 7+ executando como replica set (ex.: `rs0`)
 
 ## Configuração
@@ -80,6 +80,19 @@ ENABLE_DEMO_USER=true
 
 Nunca habilite `ENABLE_DEMO_USER` em produção.
 
+### Google Login
+
+O fluxo novo usa OAuth 2.0 diretamente com credenciais do seu próprio projeto Google Cloud. Configure um cliente OAuth do tipo Web Application e registre exatamente o callback do backend.
+
+```env
+FRONTEND_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:8001/api/auth/google/callback
+```
+
+Sem essas credenciais, cadastro/login por e-mail continuam funcionando e a rota de início do Google responde como integração não configurada.
+
 ### Frontend
 
 ```bash
@@ -98,7 +111,13 @@ REACT_APP_BACKEND_URL=https://api.seudominio.com
 
 O Future Flex depende de transações ACID reais. Um MongoDB standalone não é suficiente para os fluxos financeiros multi-documento.
 
-O repositório contém `scripts/mongo_rs.sh` para o ambiente legado. Para desenvolvimento portátil, consulte `docs/DEPLOYMENT.md` e `docker-compose.dev.yml`.
+Suba o MongoDB portátil de desenvolvimento:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+O repositório também mantém `scripts/mongo_rs.sh` para compatibilidade com o ambiente legado.
 
 ## Executar o backend
 
@@ -183,8 +202,8 @@ Há também scripts históricos das Etapas 3–6 na raiz usados durante a constr
 
 ## Release
 
-Antes de uma versão ser marcada como pronta para produção, execute o checklist de `docs/RELEASE_CHECKLIST.md`.
+Antes de uma versão ser marcada como pronta para produção, execute o checklist de `docs/RELEASE_CHECKLIST.md` e consulte `docs/DEPLOYMENT.md`.
 
-## Observação sobre Google Login
+## Compatibilidade legada
 
-O fluxo de Google Login existente foi originalmente integrado ao gateway OAuth do Emergent. Login por e-mail/senha é independente. A migração do Google OAuth para credenciais próprias é tratada como item explícito do hardening de release; não configure produção dependendo de uma URL temporária do Emergent.
+O endpoint antigo de sessão Google do Emergent foi mantido temporariamente para não quebrar previews históricos, mas o frontend novo não depende mais dele. A IA também usa a SDK oficial da OpenAI; `EMERGENT_LLM_KEY` existe apenas como fallback temporário de chave durante a migração.
