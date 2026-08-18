@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -7,14 +8,51 @@ from .config import (ACCESS_TOKEN_MINUTES, COOKIE_SAMESITE, COOKIE_SECURE,
                      JWT_ALGORITHM, JWT_SECRET, REFRESH_TOKEN_DAYS)
 
 
+# Password login is currently a single authentication factor. Keep the policy
+# length-based (passphrases welcome) instead of requiring artificial character classes.
+PASSWORD_MIN_LENGTH = 15
+PASSWORD_MAX_LENGTH = 128
+_PASSWORD_SCHEME = "bcrypt_sha256$"
+
+
+def validate_new_password(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(f"A senha deve ter ao menos {PASSWORD_MIN_LENGTH} caracteres")
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise ValueError(f"A senha deve ter no máximo {PASSWORD_MAX_LENGTH} caracteres")
+
+
+def _bcrypt_sha256_input(password: str) -> bytes:
+    # bcrypt only consumes a limited input length. Pre-hashing means the complete
+    # UTF-8 password contributes to verification while bcrypt still supplies the
+    # adaptive salted work factor. The prefix keeps old raw-bcrypt hashes readable.
+    return hashlib.sha256(password.encode("utf-8")).hexdigest().encode("ascii")
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    digest = _bcrypt_sha256_input(password)
+    hashed = bcrypt.hashpw(digest, bcrypt.gensalt()).decode("utf-8")
+    return f"{_PASSWORD_SCHEME}{hashed}"
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     if not hashed:
         return False
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    try:
+        if hashed.startswith(_PASSWORD_SCHEME):
+            stored = hashed[len(_PASSWORD_SCHEME):]
+            return bcrypt.checkpw(
+                _bcrypt_sha256_input(plain),
+                stored.encode("utf-8"),
+            )
+        # Backwards compatibility for users created before the release hardening.
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
+
+def password_hash_needs_upgrade(hashed: str) -> bool:
+    return bool(hashed) and not hashed.startswith(_PASSWORD_SCHEME)
 
 
 def create_access_token(user_id: str, email: str) -> str:
