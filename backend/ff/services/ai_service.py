@@ -1,4 +1,4 @@
-"""Analista financeiro com IA (GPT-5.5).
+"""Analista financeiro com IA.
 
 Regras de seguranca:
 - a IA NUNCA acessa o banco: recebe apenas o contexto do usuario autenticado;
@@ -11,10 +11,9 @@ import logging
 from datetime import timedelta
 
 from bson import ObjectId
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from openai import AsyncOpenAI
 
-from ..core.config import (AI_DAILY_LIMIT, AI_MODEL, AI_PROVIDER, EMERGENT_LLM_KEY,
-                           OPENAI_API_KEY)
+from ..core.config import AI_DAILY_LIMIT, AI_MODEL, EMERGENT_LLM_KEY, OPENAI_API_KEY
 from ..core.db import db
 from ..core.deps import DomainError
 from ..domain.money import money
@@ -38,15 +37,12 @@ REGRAS ABSOLUTAS:
 """
 
 
-def _chat(session_id: str, extra_system: str = "") -> LlmChat:
+def _client() -> AsyncOpenAI:
+    # EMERGENT_LLM_KEY is retained only as a temporary compatibility fallback.
     api_key = OPENAI_API_KEY or EMERGENT_LLM_KEY
     if not api_key:
         raise DomainError("Integração de IA não configurada", 503)
-    return LlmChat(
-        api_key=api_key,
-        session_id=session_id,
-        system_message=SYSTEM_PROMPT + extra_system,
-    ).with_model(AI_PROVIDER, AI_MODEL)
+    return AsyncOpenAI(api_key=api_key, timeout=30.0, max_retries=2)
 
 
 async def _check_rate_limit(user_id: str):
@@ -83,7 +79,6 @@ async def _store(user_id: str, session_id: str, question: str, answer: str, kind
 async def _run(user_id: str, session_id: str, prompt: str, context: dict, kind: str,
                question_for_history: str, extra_system: str = "") -> str:
     await _check_rate_limit(user_id)
-    chat = _chat(f"{user_id}:{session_id}", extra_system)
     history = await _history(user_id, session_id)
     recap = ""
     if history:
@@ -95,12 +90,20 @@ async def _run(user_id: str, session_id: str, prompt: str, context: dict, kind: 
                f"{json.dumps(context, ensure_ascii=False, default=str)}{recap}\n\n"
                f"PERGUNTA/TAREFA:\n{prompt}")
     try:
-        answer = await chat.send_message(UserMessage(text=message))
+        response = await _client().responses.create(
+            model=AI_MODEL,
+            instructions=SYSTEM_PROMPT + extra_system,
+            input=message,
+        )
+        answer = response.output_text.strip()
+        if not answer:
+            raise RuntimeError("Resposta vazia do modelo")
+    except DomainError:
+        raise
     except Exception as exc:
         logger.error("Falha na chamada de IA (user=%s kind=%s): %s", user_id, kind, exc)
         raise DomainError("Não foi possível consultar a IA agora. Tente novamente.", 502) from exc
 
-    answer = answer if isinstance(answer, str) else str(answer)
     await _register_usage(user_id, kind)
     await _store(user_id, session_id, question_for_history, answer, kind)
     return answer
@@ -135,7 +138,6 @@ async def analyze_purchase(user_id: str, payload: dict, session_id: str = "defau
         "credit_card" if installments > 1 else "account")
 
     context = await context_service.build(user_id)
-    # simulacao READ-ONLY reutilizando o servico existente
     simulation = await simulation_service.simulate(user_id, {
         "add_installment_purchase": {
             "description": payload.get("description") or "Compra avaliada",
