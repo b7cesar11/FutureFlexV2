@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Refresh lockfile
+      - name: Refresh lockfile from patched package manifest
         run: yarn install --non-interactive
       - name: Commit refreshed lockfile
         run: |
