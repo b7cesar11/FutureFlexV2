@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-O deploy de produção deve ser independente do Preview do Emergent e preservar as garantias financeiras do backend.
+O deploy de produção deve ser independente do antigo Preview de desenvolvimento e preservar as garantias financeiras do backend.
 
 ## Componentes mínimos
 
@@ -65,22 +65,32 @@ REQUIRE_REPLICA_SET=true
 ENABLE_DEMO_USER=false
 COOKIE_SECURE=true
 COOKIE_SAMESITE=lax
+FRONTEND_URL=https://app.exemplo.com
 ```
 
 Se frontend/backend forem cross-site, ajuste `COOKIE_SAMESITE` e `CORS_ORIGINS` conforme a seção anterior.
 
 ## IA
 
-Preferencial:
-
 ```env
 OPENAI_API_KEY=...
-AI_PROVIDER=openai
 AI_MODEL=gpt-5.5
 AI_DAILY_LIMIT=60
 ```
 
-Sem chave configurada, endpoints de IA devem responder indisponibilidade; o motor financeiro deve continuar funcionando normalmente.
+Sem chave configurada, endpoints de IA respondem indisponibilidade; o motor financeiro continua funcionando normalmente.
+
+## Google OAuth
+
+Crie um cliente OAuth 2.0 Web Application em um projeto Google Cloud sob seu controle e configure:
+
+```env
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://api.exemplo.com/api/auth/google/callback
+```
+
+A URI configurada no Google precisa corresponder exatamente ao callback usado pelo backend. O login por e-mail/senha não depende dessas credenciais.
 
 ## MongoDB
 
@@ -109,20 +119,19 @@ Resposta saudável deve indicar:
 }
 ```
 
-## Migração do ambiente legado
+## Migração para produção
 
-Antes de desligar definitivamente o ambiente do Emergent:
-
-1. exporte/backup do banco se houver dados reais;
-2. configure o novo MongoDB;
+1. exporte/backup qualquer banco que precise ser preservado;
+2. configure o MongoDB de produção;
 3. configure secrets no novo provedor;
-4. suba backend e valide `/api/health`;
-5. rode a regressão backend;
-6. faça build e deploy do frontend;
-7. valide login e onboarding com usuário novo;
-8. valide um fluxo financeiro completo com conta de teste;
-9. valide Google Login somente depois de migrar OAuth para credenciais próprias;
-10. somente então comece a cadastrar dados financeiros reais.
+4. configure OpenAI e Google OAuth com credenciais próprias;
+5. suba backend e valide `/api/health`;
+6. rode a regressão backend;
+7. faça build e deploy do frontend;
+8. valide cadastro, login e onboarding com usuário novo;
+9. valide um fluxo financeiro completo com conta de teste;
+10. valide Google Login no domínio final;
+11. somente então comece a cadastrar dados financeiros reais.
 
 ## Backups
 
