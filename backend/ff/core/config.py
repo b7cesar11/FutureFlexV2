@@ -38,7 +38,15 @@ CORS_ORIGINS = tuple(
     if origin.strip()
 )
 
-# Legacy Emergent Google gateway remains optional for backwards compatibility.
+# Native Google OAuth (preferred). FRONTEND_URL is the post-login destination.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_REDIRECT_URI = os.environ.get(
+    "GOOGLE_REDIRECT_URI", "http://localhost:8001/api/auth/google/callback"
+).strip()
+
+# Legacy Emergent Google gateway kept temporarily for backward compatibility only.
 EMERGENT_SESSION_DATA_URL = os.environ.get(
     "EMERGENT_SESSION_DATA_URL",
     "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
@@ -64,3 +72,6 @@ def validate_runtime_config() -> None:
         raise RuntimeError("ENABLE_DEMO_USER não pode estar habilitado em produção")
     if COOKIE_SAMESITE == "none" and not COOKIE_SECURE:
         raise RuntimeError("COOKIE_SAMESITE=none exige COOKIE_SECURE=true")
+    google_values = (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI)
+    if any(google_values[:2]) and not all(google_values):
+        raise RuntimeError("Google OAuth exige GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI")
