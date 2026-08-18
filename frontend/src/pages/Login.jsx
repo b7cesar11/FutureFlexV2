@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiError } from "@/lib/api";
+import { API, apiError } from "@/lib/api";
 
 const field =
   "w-full rounded-md border border-zinc-800 bg-zinc-900 px-3.5 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-[#ccff00]";
@@ -14,6 +14,14 @@ export default function Login() {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ email: "", password: "", name: "" });
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("oauth_error")) {
+      toast.error("Não foi possível concluir o login com o Google.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -32,9 +40,7 @@ export default function Login() {
   };
 
   const googleLogin = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = `${API}/auth/google/start`;
   };
 
   return (
