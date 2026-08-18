@@ -3,6 +3,8 @@ name: Future Flex Dependency Audit
 on:
   push:
     branches: [agent/release-dependency-audit]
+  pull_request:
+    branches: [agent/release-v1-hardening]
 
 jobs:
   audit:
