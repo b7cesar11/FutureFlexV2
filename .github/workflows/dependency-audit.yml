@@ -24,7 +24,7 @@ jobs:
         working-directory: frontend
         run: |
           set +e
-          yarn audit --groups dependencies --level high
+          yarn audit --groups dependencies --level low
           code=$?
           echo "FRONTEND_AUDIT_EXIT=$code"
           exit 0
