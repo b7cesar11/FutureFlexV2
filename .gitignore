@@ -30,7 +30,13 @@ next-env.d.ts
 dist/
 dist
 
-# Environment files (comprehensive coverage)
+# Environment files (secrets stay local; templates are versioned)
+.env
+.env.*
+*.env
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 
 *token.json*
 *credentials.json*
@@ -80,9 +86,6 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
-.env
-.env.*
-*.env
 credentials.json
 *.key
 .credentials
