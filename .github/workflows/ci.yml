@@ -24,6 +24,7 @@ jobs:
       ENABLE_DEMO_USER: "true"
       COOKIE_SECURE: "false"
       COOKIE_SAMESITE: lax
+      PASSWORD_MIN_LENGTH: "8"
       FRONTEND_URL: http://127.0.0.1:3000
       CORS_ORIGINS: ""
       REACT_APP_BACKEND_URL: http://127.0.0.1:8001
