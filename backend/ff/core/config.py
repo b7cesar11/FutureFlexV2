@@ -20,6 +20,12 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 12
 REFRESH_TOKEN_DAYS = 7
 
+# New password policy defaults to the single-factor production requirement.
+# Tests may lower it explicitly to exercise historical financial suites; production may not.
+PASSWORD_MIN_LENGTH = int(os.environ.get("PASSWORD_MIN_LENGTH", "15"))
+PASSWORD_MAX_LENGTH = 128
+EXPOSE_ACCESS_TOKEN_IN_RESPONSE = APP_ENV != "production"
+
 # Production-safe defaults. Demo data must always be explicitly enabled.
 ENABLE_DEMO_USER = env_bool("ENABLE_DEMO_USER", False)
 REQUIRE_REPLICA_SET = env_bool("REQUIRE_REPLICA_SET", True)
@@ -61,6 +67,12 @@ def validate_runtime_config() -> None:
         raise RuntimeError("JWT_SECRET deve ter pelo menos 32 caracteres em produção")
     if APP_ENV == "production" and ENABLE_DEMO_USER:
         raise RuntimeError("ENABLE_DEMO_USER não pode estar habilitado em produção")
+    if APP_ENV == "production" and PASSWORD_MIN_LENGTH < 15:
+        raise RuntimeError("PASSWORD_MIN_LENGTH não pode ser menor que 15 em produção")
+    if APP_ENV == "production" and not COOKIE_SECURE:
+        raise RuntimeError("COOKIE_SECURE deve estar habilitado em produção")
+    if APP_ENV == "production" and "*" in CORS_ORIGINS:
+        raise RuntimeError("CORS_ORIGINS não pode usar wildcard em produção")
     if COOKIE_SAMESITE == "none" and not COOKIE_SECURE:
         raise RuntimeError("COOKIE_SAMESITE=none exige COOKIE_SECURE=true")
     google_values = (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI)
