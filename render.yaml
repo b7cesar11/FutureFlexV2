@@ -1,0 +1,74 @@
+# Future Flex V2 — staging/release-candidate infrastructure.
+# This Blueprint intentionally uses Render's free web instance for the first deployment.
+# Upgrade the API service to a paid production instance before storing real financial data.
+# MongoDB remains external (recommended: MongoDB Atlas) because ACID transactions are mandatory.
+
+services:
+  - type: web
+    name: futureflex-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: APP_ENV
+        value: production
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: futureflex_staging
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PROJECTION_WINDOW_MONTHS
+        value: "24"
+      - key: REQUIRE_REPLICA_SET
+        value: "true"
+      - key: ENABLE_DEMO_USER
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      # Render staging uses different onrender.com origins. Before real production,
+      # prefer app.<domain> + api.<domain> and switch this to lax.
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AI_MODEL
+        value: gpt-5.5
+      - key: AI_DAILY_LIMIT
+        value: "60"
+
+  - type: web
+    name: futureflex-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: yarn install --frozen-lockfile --non-interactive && yarn build
+    staticPublishPath: build
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 20.20.2
+      # Set to the public URL of futureflex-api, without a trailing /api.
+      - key: REACT_APP_BACKEND_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
