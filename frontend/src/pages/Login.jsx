@@ -101,6 +101,7 @@ export default function Login() {
                 className={field}
                 placeholder="Seu nome"
                 data-testid="register-name"
+                autoComplete="name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
@@ -111,6 +112,7 @@ export default function Login() {
               required
               placeholder="E-mail"
               data-testid="auth-email"
+              autoComplete="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
@@ -118,11 +120,19 @@ export default function Login() {
               className={field}
               type="password"
               required
+              minLength={mode === "register" ? 15 : undefined}
+              maxLength={128}
               placeholder="Senha"
               data-testid="auth-password"
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
+            {mode === "register" && (
+              <p className="px-0.5 text-[11px] leading-relaxed text-zinc-500" data-testid="password-hint">
+                Use pelo menos 15 caracteres. Frases-senha longas são bem-vindas; não exigimos combinações artificiais de símbolos.
+              </p>
+            )}
             <button
               type="submit"
               disabled={busy}
