@@ -67,6 +67,7 @@ Edite os valores obrigatórios:
 MONGO_URL=mongodb://127.0.0.1:27017/?replicaSet=rs0
 DB_NAME=futureflex
 JWT_SECRET=uma-chave-aleatoria-longa
+PASSWORD_MIN_LENGTH=15
 ```
 
 Para IA:
@@ -205,12 +206,15 @@ Há também scripts históricos das Etapas 3–6 na raiz usados durante a constr
 
 - use `APP_ENV=production`;
 - use `JWT_SECRET` aleatório com pelo menos 32 caracteres;
+- mantenha `PASSWORD_MIN_LENGTH=15` ou superior;
 - mantenha `ENABLE_DEMO_USER=false`;
 - mantenha `REQUIRE_REPLICA_SET=true`;
 - use HTTPS e `COOKIE_SECURE=true`;
 - configure `CORS_ORIGINS` com allow-list explícita quando necessário;
 - não use `*` com credenciais;
 - nunca versione `.env`, chaves ou credenciais;
+- tokens de autenticação do browser ficam em cookies HttpOnly em produção e não são devolvidos no JSON de login/cadastro;
+- senhas novas são armazenadas com esquema versionado `bcrypt_sha256`, enquanto hashes bcrypt antigos permanecem compatíveis e são atualizados no próximo login;
 - Google OAuth usa `state` assinado, expirável e vinculado ao navegador iniciador por cookie HttpOnly temporário.
 
 ## Funcionalidades principais
