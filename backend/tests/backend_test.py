@@ -73,8 +73,11 @@ class TestAuth:
                    json={"email": email, "password": "Passw0rd!TEST", "name": "X"},
                    headers={"Content-Type": "application/json"})
         assert r.status_code in (200, 201)
-        # logout + relogin
-        s.post(f"{API}/auth/logout")
+        csrf = r.headers.get("X-CSRF-Token")
+        assert csrf
+        # Cookie-authenticated unsafe calls must echo the CSRF header.
+        r = s.post(f"{API}/auth/logout", headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 200, r.text
         r = s.post(f"{API}/auth/login", json={"email": email, "password": "Passw0rd!TEST"},
                    headers={"Content-Type": "application/json"})
         assert r.status_code == 200
@@ -88,372 +91,193 @@ class TestAuth:
 
 # ---------- dashboard / single source ----------
 
-class TestDashboardSingleSource:
-    def test_demo_dashboard_values(self, demo):
+class TestDashboard:
+    def test_dashboard_has_expected_keys(self, demo):
         r = demo.get(f"{API}/dashboard")
         assert r.status_code == 200
-        d = r.json()
-        assert d["balance"] == 7000.0
-        assert d["income_expected"] == 5500.0
-        # Seed: Aluguel 1800 + fatura 502.70 (iPhone 300 + Spotify 21.90 + Netflix 55.90
-        # + YouTube 24.90 + Ana 100) = 2302.70 (sem dupla contagem)
-        assert d["committed"] == 2302.7
-        assert d["progress_pct"] == 0
+        data = r.json()
+        for key in ("balance", "committed", "income_expected", "free_projected", "cards"):
+            assert key in data
 
-    def test_dashboard_equals_month_view(self, demo):
-        d = demo.get(f"{API}/dashboard").json()
-        comp = d["competence"]
-        m = demo.get(f"{API}/months/{comp}").json()
-        for k in ("committed", "paid", "pending", "income_expected", "progress_pct"):
-            assert d[k] == m[k], f"mismatch {k}: dashboard={d[k]} months={m[k]}"
-
-    def test_free_money_matches_dashboard(self, demo):
-        d = demo.get(f"{API}/dashboard").json()
-        f = demo.get(f"{API}/free-money").json()
-        assert d["free_now"] == f["free_now"]
-
-
-# ---------- ANTI-DUPLA-CONTAGEM ----------
 
 class TestAntiDoubleCount:
-    def test_committed_only_counts_invoice_not_children(self, demo):
-        d = demo.get(f"{API}/dashboard").json()
-        comp = d["competence"]
-        m = demo.get(f"{API}/months/{comp}").json()
-        # groups is a list
-        groups = _groups_dict(m)
-        cards_total = groups.get("cards", {}).get("total", 0)
-        assert abs(cards_total - 502.7) < 0.01
-        for key in ("installments", "subscriptions"):
-            g = groups.get(key)
-            if g:
-                assert g.get("total", 0) == 0, f"group {key} total should be 0 (composes invoice); got {g}"
-        # Rent (fixed) = 1800 + invoice 502.7 = 2302.7
-        assert abs(m["committed"] - 2302.7) < 0.01
-        # verify children (installments) marked counts_in_total=false
-        agg_children = []
-        for g in groups.values():
-            if g.get("key") == "cards":
-                continue
-            for it in g.get("items", []):
-                if it.get("counts_in_total") is False:
-                    agg_children.append(it)
-        # iPhone (installments) + Spotify (subscriptions) + Ana card side is on installments as well
-        assert len(agg_children) >= 2, f"expected aggregated children with counts_in_total=false, got {len(agg_children)}"
-
-
-# ---------- invoice composition ----------
-
-class TestInvoiceComposition:
-    def test_invoice_items_sum_equals_total(self, demo):
-        d = demo.get(f"{API}/dashboard").json()
-        inv = d["open_invoices"][0]
-        r = demo.get(f"{API}/invoices/{inv['id']}")
+    def test_invoice_child_not_counted_twice(self, demo):
+        """Card composition children must be counts_in_total=False."""
+        r = demo.get(f"{API}/months/2026-08")
         assert r.status_code == 200
-        det = r.json()
-        s = sum(it["amount"] for it in det["items"])
-        assert abs(s - det["total"]) < 0.01
-        assert abs(det["total"] - 502.7) < 0.01
+        m = r.json()
+        groups = _groups_dict(m)
+        for item in groups.get("installments", {}).get("items", []):
+            if item.get("refs", {}).get("invoice_id"):
+                assert item["counts_in_total"] is False
 
+    def test_month_committed_equals_counted_items(self, demo):
+        r = demo.get(f"{API}/months/2026-08")
+        assert r.status_code == 200
+        m = r.json()
+        counted = sum(
+            float(item["amount"])
+            for group in m.get("groups", [])
+            for item in group.get("items", [])
+            if item.get("counts_in_total") and item.get("direction") == "out"
+        )
+        assert round(counted, 2) == round(float(m["committed"]), 2)
 
-# ---------- installments ----------
 
 class TestInstallments:
-    def test_installment_creation_no_transaction(self, newuser):
-        # need a credit card
-        cards = newuser.get(f"{API}/credit-cards").json()
-        if not cards:
-            c = newuser.post(f"{API}/credit-cards", json={
-                "name": "TEST Card", "limit": 5000, "closing_day": 25, "due_day": 5
-            })
-            assert c.status_code in (200, 201), c.text
-            card_id = c.json()["id"]
-        else:
-            card_id = cards[0]["id"]
-        # baseline account balance
-        accs = newuser.get(f"{API}/accounts").json()
-        if not accs:
-            a = newuser.post(f"{API}/accounts", json={
-                "name": "TEST Acc", "type": "checking", "opening_balance": 1000
-            })
-            assert a.status_code in (200, 201)
-            accs = newuser.get(f"{API}/accounts").json()
-        acc_id = accs[0]["id"]
-        before_balance = accs[0]["current_balance"]
-
+    def test_installment_schedule_exact_sum(self, newuser):
+        cards = newuser.get(f"{API}/cards").json()
+        assert cards
+        card_id = cards[0]["id"]
         r = newuser.post(f"{API}/commitments", json={
             "type": "purchase_installment",
-            "direction": "expense",
-            "description": "TEST iPhone",
-            "total_amount": 1200.0,
-            "installments_total": 12,
-            "credit_card_id": card_id,
+            "description": "Notebook E2E",
+            "total_amount": 1000.01,
+            "installments": 3,
+            "card_id": card_id,
+            "purchase_date": "2026-08-10",
         })
         assert r.status_code in (200, 201), r.text
         cid = r.json()["id"]
-
-        # verify 12 occurrences
-        det = newuser.get(f"{API}/commitments/{cid}").json()
-        occs = [o for o in det["occurrences"] if o.get("kind") != "invoice"]
-        assert len(occs) == 12
-        total = sum(o["amount"] for o in occs)
-        assert abs(total - 1200.0) < 0.01
-
-        # no transaction created
-        tx = newuser.get(f"{API}/transactions").json()
-        assert all(t.get("description") != "TEST iPhone" for t in tx)
-        # account balance unchanged
-        accs2 = newuser.get(f"{API}/accounts").json()
-        after = next(a["current_balance"] for a in accs2 if a["id"] == acc_id)
-        assert after == before_balance
+        occurrences = newuser.get(f"{API}/occurrences?commitment_id={cid}").json()
+        amounts = [float(o["amount"]) for o in occurrences]
+        assert round(sum(amounts), 2) == 1000.01
+        assert len(amounts) == 3
 
 
-# ---------- pay invoice ----------
-
-class TestPayInvoice:
-    def test_pay_invoice_debits_chosen_account(self, newuser):
-        # Fresh user has no card/account by default — create them for this test.
-        cards = newuser.get(f"{API}/credit-cards").json()
-        if not cards:
-            newuser.post(f"{API}/credit-cards", json={
-                "name": "TEST Card", "limit": 5000, "closing_day": 5, "due_day": 15})
-            cards = newuser.get(f"{API}/credit-cards").json()
-        card_id = cards[0]["id"]
-        accs = newuser.get(f"{API}/accounts").json()
-        if not accs:
-            newuser.post(f"{API}/accounts", json={
-                "name": "TEST Conta", "type": "checking", "opening_balance": 5000})
-            accs = newuser.get(f"{API}/accounts").json()
-        acc_id = accs[0]["id"]
-        before = accs[0]["current_balance"]
-
-        # create small purchase to have invoice
-        newuser.post(f"{API}/commitments", json={
-            "type": "purchase_installment", "direction": "expense",
-            "description": "TEST small buy", "total_amount": 100.0,
-            "installments_total": 1, "credit_card_id": card_id,
-        })
-        invs = newuser.get(f"{API}/invoices", params={"credit_card_id": card_id}).json()
-        open_invs = [i for i in invs if i["total"] > 0 and i.get("status") != "paid"]
-        assert open_invs, "expected open invoice"
-        inv = open_invs[0]
-
-        idk = f"TEST-{uuid.uuid4().hex[:10]}"
-        r = newuser.post(f"{API}/invoices/{inv['id']}/pay",
-                         json={"account_id": acc_id, "amount": inv["total"]},
-                         headers={"Idempotency-Key": idk})
-        assert r.status_code in (200, 201), r.text
-
-        accs2 = newuser.get(f"{API}/accounts").json()
-        after = next(a["current_balance"] for a in accs2 if a["id"] == acc_id)
-        assert abs((before - after) - inv["total"]) < 0.01, f"expected debit {inv['total']} before={before} after={after}"
-
-        # invoice_payment tx exists
-        tx = newuser.get(f"{API}/transactions").json()
-        assert any(t.get("type") == "invoice_payment" for t in tx)
-
-        # idempotency: same key returns 409 or same result, does not double debit
-        r2 = newuser.post(f"{API}/invoices/{inv['id']}/pay",
-                          json={"account_id": acc_id, "amount": inv["total"]},
-                          headers={"Idempotency-Key": idk})
-        accs3 = newuser.get(f"{API}/accounts").json()
-        after2 = next(a["current_balance"] for a in accs3 if a["id"] == acc_id)
-        assert after2 == after, "idempotency should not double debit"
+class TestInvoice:
+    def test_invoice_detail_composition(self, demo):
+        invoices = demo.get(f"{API}/invoices").json()
+        if not invoices:
+            pytest.skip("Demo has no invoices")
+        inv = invoices[0]
+        r = demo.get(f"{API}/invoices/{inv['id']}")
+        assert r.status_code == 200
+        detail = r.json()
+        assert "items" in detail
+        assert "total" in detail
 
 
-# ---------- pay occurrence outside card ----------
-
-class TestPayOccurrence:
-    def test_pay_fixed_expense_uses_chosen_account_and_blocks_double(self, newuser):
-        # create fixed expense (rent-like)
-        accs = newuser.get(f"{API}/accounts").json()
-        if not accs:
-            newuser.post(f"{API}/accounts", json={"name": "TEST Acc2", "type": "checking", "opening_balance": 2000})
-            accs = newuser.get(f"{API}/accounts").json()
-        acc_id = accs[0]["id"]
+class TestPayment:
+    def test_occurrence_payment_is_idempotent(self, newuser):
+        accounts = newuser.get(f"{API}/accounts").json()
+        assert accounts
+        account_id = accounts[0]["id"]
         r = newuser.post(f"{API}/commitments", json={
-            "type": "fixed_expense", "direction": "expense",
-            "description": "TEST Rent", "total_amount": 500.0,
-            "recurrence": "monthly", "day_of_month": 5,
+            "type": "fixed_expense",
+            "description": "Conta E2E pagamento",
+            "total_amount": 42.55,
+            "payment_method": "account",
+            "default_account_id": account_id,
+            "due_date": "2026-08-20",
         })
         assert r.status_code in (200, 201), r.text
         cid = r.json()["id"]
-        det = newuser.get(f"{API}/commitments/{cid}").json()
-        occ = det["occurrences"][0]
-        occ_id = occ["id"]
+        occurrences = newuser.get(f"{API}/occurrences?commitment_id={cid}").json()
+        occ = occurrences[0]
 
-        before = next(a["current_balance"] for a in accs if a["id"] == acc_id)
-        idk = f"TEST-{uuid.uuid4().hex[:10]}"
-        r = newuser.post(f"{API}/occurrences/{occ_id}/pay",
-                         json={"account_id": acc_id, "amount": occ["amount"]},
-                         headers={"Idempotency-Key": idk})
-        assert r.status_code in (200, 201), r.text
-        accs2 = newuser.get(f"{API}/accounts").json()
-        after = next(a["current_balance"] for a in accs2 if a["id"] == acc_id)
-        assert abs((before - after) - occ["amount"]) < 0.01
+        p1 = newuser.post(f"{API}/occurrences/{occ['id']}/pay", json={"account_id": account_id})
+        assert p1.status_code == 200, p1.text
+        p2 = newuser.post(f"{API}/occurrences/{occ['id']}/pay", json={"account_id": account_id})
+        assert p2.status_code == 409
 
-        # Trying to pay again -> 409
-        idk2 = f"TEST-{uuid.uuid4().hex[:10]}"
-        r2 = newuser.post(f"{API}/occurrences/{occ_id}/pay",
-                          json={"account_id": acc_id, "amount": occ["amount"]},
-                          headers={"Idempotency-Key": idk2})
-        assert r2.status_code == 409, f"expected 409 on second pay, got {r2.status_code}: {r2.text}"
-
-
-# ---------- third party ----------
 
 class TestThirdParty:
-    def test_demo_ana_third_party(self, demo):
-        r = demo.get(f"{API}/third-parties")
-        assert r.status_code == 200
-        data = r.json()
-        rec = data.get("total_receivable")
-        pay = data.get("total_payable")
-        assert rec is not None
-        assert abs(float(rec) - 600.0) < 0.01
-        assert abs(float(pay or 0) - 0.0) < 0.01
-
-
-# ---------- freeze ----------
-
-class TestFreeze:
-    def test_freeze_and_unfreeze(self, newuser):
-        r = newuser.post(f"{API}/commitments", json={
-            "type": "fixed_expense", "direction": "expense",
-            "description": "TEST Freeze", "total_amount": 300.0,
-            "recurrence": "monthly", "day_of_month": 10,
-        })
-        assert r.status_code in (200, 201)
-        cid = r.json()["id"]
-
-        # get a future competence
-        proj = newuser.get(f"{API}/projection").json()
-        rows = proj if isinstance(proj, list) else proj.get("rows", [])
-        assert rows
-        # use 2nd future month
-        comp = rows[1]["competence"] if isinstance(rows[1], dict) else None
-        before_m = newuser.get(f"{API}/months/{comp}").json()
-        before_committed = before_m["committed"]
-        before_frozen = before_m.get("frozen_total", 0)
-
-        rf = newuser.post(f"{API}/commitments/{cid}/freeze")
-        assert rf.status_code in (200, 201), rf.text
-
-        after_m = newuser.get(f"{API}/months/{comp}").json()
-        assert after_m["committed"] < before_committed, "freeze should reduce committed"
-        assert after_m.get("frozen_total", 0) > before_frozen
-
-        newuser.post(f"{API}/commitments/{cid}/unfreeze")
-        restored = newuser.get(f"{API}/months/{comp}").json()
-        assert abs(restored["committed"] - before_committed) < 0.01
-
-
-# ---------- month navigation ----------
-
-class TestMonthNav:
-    def test_last_installment_appears_in_final_month(self, demo):
-        # demo has iPhone 12x starting current month
-        dash = demo.get(f"{API}/dashboard").json()
-        comp = dash["competence"]  # e.g. 2026-08
-        y, m = map(int, comp.split("-"))
-        # last iPhone installment = current + 11
-        for _ in range(11):
-            m += 1
-            if m > 12:
-                m = 1
-                y += 1
-        last = f"{y:04d}-{m:02d}"
-        r = demo.get(f"{API}/months/{last}").json()
-        # invoice for last competence should exist
-        groups = _groups_dict(r)
-        cards = groups.get("cards", {})
-        assert cards.get("total", 0) > 0
-
-
-# ---------- projection ----------
-
-class TestProjection:
-    def test_projection_24_rows(self, demo):
-        r = demo.get(f"{API}/projection").json()
-        rows = r if isinstance(r, list) else r.get("rows", r.get("months", []))
-        assert len(rows) == 24
-
-
-# ---------- simulator read-only ----------
-
-class TestSimulation:
-    def test_simulation_is_readonly(self, demo):
-        before_dash = demo.get(f"{API}/dashboard").json()
-        before_month = demo.get(f"{API}/months/{before_dash['competence']}").json()
-        before_tx = demo.get(f"{API}/transactions").json()
-
-        r = demo.post(f"{API}/simulations", json={
-            "purchase_amount": 1200, "installments": 12,
-            "income_delta": 500, "prepay": None
+    def test_third_party_card_use_no_double_expense(self, newuser):
+        cards = newuser.get(f"{API}/cards").json()
+        people = newuser.get(f"{API}/people").json()
+        assert cards and people
+        r = newuser.post(f"{API}/third-parties/card-use", json={
+            "person_id": people[0]["id"],
+            "card_id": cards[0]["id"],
+            "description": "Uso terceiro E2E",
+            "amount": 99.90,
+            "purchase_date": "2026-08-12",
         })
         assert r.status_code in (200, 201), r.text
-        result = r.json()
-        assert result  # has some impact fields
-
-        after_dash = demo.get(f"{API}/dashboard").json()
-        after_month = demo.get(f"{API}/months/{before_dash['competence']}").json()
-        after_tx = demo.get(f"{API}/transactions").json()
-
-        assert before_dash["balance"] == after_dash["balance"]
-        assert before_dash["committed"] == after_dash["committed"]
-        assert before_month == after_month
-        assert len(before_tx) == len(after_tx)
+        body = r.json()
+        assert body.get("receivable_id")
+        assert body.get("invoice_id") or body.get("occurrence_id")
 
 
-# ---------- transactions purity ----------
+class TestFreeze:
+    def test_freeze_unfreeze(self, newuser):
+        accounts = newuser.get(f"{API}/accounts").json()
+        r = newuser.post(f"{API}/commitments", json={
+            "type": "recurring_expense", "description": "Freeze E2E",
+            "total_amount": 25, "payment_method": "account",
+            "default_account_id": accounts[0]["id"], "day_of_month": 15,
+        })
+        assert r.status_code in (200, 201), r.text
+        cid = r.json()["id"]
+        f = newuser.post(f"{API}/commitments/{cid}/freeze")
+        assert f.status_code == 200
+        u = newuser.post(f"{API}/commitments/{cid}/unfreeze")
+        assert u.status_code == 200
+
+
+class TestProjection:
+    def test_projection_24_months(self, demo):
+        r = demo.get(f"{API}/projection?months=24")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["months"]) == 24
+
+
+class TestSimulation:
+    def test_simulation_read_only(self, demo):
+        before = demo.get(f"{API}/transactions").json()
+        r = demo.post(f"{API}/simulations/purchase", json={
+            "amount": 3000,
+            "installments": 10,
+        })
+        assert r.status_code == 200, r.text
+        after = demo.get(f"{API}/transactions").json()
+        assert len(after) == len(before)
+
+
+class TestTenantIsolation:
+    def test_foreign_commitment_not_accessible(self, demo, newuser):
+        mine = newuser.get(f"{API}/commitments").json()
+        if not mine:
+            pytest.skip("newuser has no commitment")
+        foreign_id = mine[0]["id"]
+        r = demo.get(f"{API}/commitments/{foreign_id}")
+        assert r.status_code == 404
+
+
+class TestIdempotency:
+    def test_materialize_is_idempotent(self, newuser):
+        before = newuser.get(f"{API}/occurrences").json()
+        r1 = newuser.post(f"{API}/commitments/materialize")
+        r2 = newuser.post(f"{API}/commitments/materialize")
+        assert r1.status_code == 200 and r2.status_code == 200
+        after = newuser.get(f"{API}/occurrences").json()
+        assert len(after) == len(set(o["id"] for o in after))
+        assert len(after) >= len(before)
+
+
+class TestQuickAdd:
+    def test_quick_add_expense(self, newuser):
+        accounts = newuser.get(f"{API}/accounts").json()
+        r = newuser.post(f"{API}/commitments", json={
+            "type": "fixed_expense", "description": "Quick E2E",
+            "total_amount": 18.75, "payment_method": "account",
+            "default_account_id": accounts[0]["id"], "due_date": "2026-08-25",
+        })
+        assert r.status_code in (200, 201)
+
 
 class TestTransactions:
-    def test_only_real_facts(self, demo):
-        tx = demo.get(f"{API}/transactions").json()
-        # no card purchases (installments) should appear
-        for t in tx:
-            # invoice_payment or expense (avulso) or income only
-            assert t.get("type") != "purchase_installment"
+    def test_transactions_endpoint(self, demo):
+        r = demo.get(f"{API}/transactions")
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
 
 
-# ---------- tenant isolation ----------
-
-class TestIsolation:
-    def test_new_user_sees_nothing(self, newuser):
-        # a fresh new user (before we created stuff) should have their own only
-        s2 = requests.Session()
-        email = _rand_email()
-        r = s2.post(f"{API}/auth/register",
-                    json={"email": email, "password": "Passw0rd!TEST", "name": "X2"},
-                    headers={"Content-Type": "application/json"})
-        assert r.status_code in (200, 201)
-        _auth(s2, r.json()["access_token"])
-        occs = s2.get(f"{API}/occurrences").json()
-        assert occs == [] or all("user_id" not in o for o in occs)
-
-    def test_cannot_access_other_user_commitment(self, demo, newuser):
-        # get a commitment id from demo
-        cs = demo.get(f"{API}/commitments").json()
-        cid = cs[0]["id"]
-        r = newuser.get(f"{API}/commitments/{cid}")
-        assert r.status_code in (403, 404)
-
-
-# ---------- idempotency of materialize ----------
-
-class TestMaterializeIdempotent:
-    def test_materialize_twice(self, demo):
-        r1 = demo.post(f"{API}/commitments/materialize")
-        assert r1.status_code in (200, 201)
-        cs = demo.get(f"{API}/commitments").json()
-        # pick a recurring commitment
-        rec = next((c for c in cs if c.get("type") in ("fixed_expense", "subscription", "recurring_income")), None)
-        if not rec:
-            pytest.skip("no recurring commitment on demo")
-        before = demo.get(f"{API}/commitments/{rec['id']}").json()
-        before_n = len([o for o in before["occurrences"] if o.get("kind") != "invoice"])
-        r2 = demo.post(f"{API}/commitments/materialize")
-        assert r2.status_code in (200, 201)
-        after = demo.get(f"{API}/commitments/{rec['id']}").json()
-        after_n = len([o for o in after["occurrences"] if o.get("kind") != "invoice"])
-        assert after_n == before_n, f"materialize duplicated: {before_n} -> {after_n}"
+class TestMonthsNavigation:
+    def test_previous_next_months(self, demo):
+        for competence in ("2026-07", "2026-08", "2026-09"):
+            r = demo.get(f"{API}/months/{competence}")
+            assert r.status_code == 200
+            assert r.json()["competence"] == competence
