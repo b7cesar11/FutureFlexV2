@@ -4,7 +4,11 @@ Future Flex V2 é uma aplicação de planejamento financeiro pessoal orientada a
 
 ## Estado do projeto
 
-O MVP funcional está implementado. O backend possui regressão automatizada para regras financeiras críticas (parcelamentos, cartões/faturas, pagamentos, valores dinâmicos, terceiros, congelamento, projeção, ownership e transações ACID). O trabalho atual é de **release hardening**: tornar execução, segurança, CI e deploy reproduzíveis e independentes do antigo ambiente de desenvolvimento.
+O MVP funcional está implementado e está em **Release Candidate / hardening de produção**. O motor financeiro possui regressão automatizada para parcelamentos, cartões/faturas, pagamentos, valores dinâmicos, terceiros, congelamento, projeção, ownership e transações ACID. O frontend também possui Playwright desktop/mobile para cadastro, onboarding, pagamento e cartão/fatura com anti-dupla-contagem.
+
+O projeto não depende mais do antigo ambiente de desenvolvimento para autenticação ou IA: Google OAuth usa credenciais próprias e o Analista IA usa a SDK oficial da OpenAI. O GitHub é a fonte de código/CI.
+
+> Ainda não considere a aplicação liberada para dados financeiros pessoais reais até concluir o deploy de staging, backup/restauração, infraestrutura de produção e smoke pós-deploy descritos em `docs/DEPLOYMENT.md`.
 
 ## Arquitetura
 
@@ -47,7 +51,7 @@ Mais detalhes: `docs/ARCHITECTURE.md`.
 - Python 3.11+
 - Node.js 20+
 - Yarn 1.22+
-- Docker/Compose para o MongoDB local, ou MongoDB 7+ executando como replica set
+- Docker/Compose para o MongoDB local, ou MongoDB executando como replica set
 
 ## Configuração
 
@@ -139,17 +143,26 @@ GET /api/health
 
 ```bash
 cd frontend
-yarn install
+yarn install --frozen-lockfile
 yarn start
 ```
 
 Build de produção:
 
 ```bash
+yarn install --frozen-lockfile
 yarn build
 ```
 
+`frontend/yarn.lock` é versionado. A CI falha se `package.json` e lockfile divergirem.
+
 ## Testes
+
+Guards de segurança/release e Blueprint de deploy:
+
+```bash
+python -m pytest tests/test_release_security.py tests/test_deploy_config.py -v
+```
 
 Regras de negócio principais:
 
@@ -177,7 +190,14 @@ yarn playwright install chromium
 yarn test:e2e
 ```
 
-O GitHub Actions executa automaticamente regressão financeira, valores dinâmicos, E2E backend, build frontend e smoke de navegador.
+A CI executa os fluxos de navegador em Chromium desktop e mobile. Entre os cenários críticos estão:
+
+- cadastro → onboarding → Dashboard → reload idempotente;
+- compromisso em conta não debita saldo antes da baixa e debita exatamente na baixa;
+- compra parcelada no cartão não debita conta;
+- parcela aparece como composição da fatura (`counts_in_total=false`);
+- comprometido conta a fatura uma única vez;
+- somente o pagamento da fatura debita a conta escolhida.
 
 Há também scripts históricos das Etapas 3–6 na raiz usados durante a construção e QA do produto.
 
@@ -188,9 +208,10 @@ Há também scripts históricos das Etapas 3–6 na raiz usados durante a constr
 - mantenha `ENABLE_DEMO_USER=false`;
 - mantenha `REQUIRE_REPLICA_SET=true`;
 - use HTTPS e `COOKIE_SECURE=true`;
-- configure `CORS_ORIGINS` somente quando frontend/backend estiverem em origens diferentes;
+- configure `CORS_ORIGINS` com allow-list explícita quando necessário;
 - não use `*` com credenciais;
-- nunca versione `.env`, chaves ou credenciais.
+- nunca versione `.env`, chaves ou credenciais;
+- Google OAuth usa `state` assinado, expirável e vinculado ao navegador iniciador por cookie HttpOnly temporário.
 
 ## Funcionalidades principais
 
@@ -210,9 +231,28 @@ Há também scripts históricos das Etapas 3–6 na raiz usados durante a constr
 - Analista IA read-only com contexto financeiro estruturado;
 - PWA responsiva para mobile e desktop.
 
-## Release
+## Deploy / Release Candidate
 
-Antes de uma versão ser marcada como pronta para produção, execute o checklist de `docs/RELEASE_CHECKLIST.md` e consulte `docs/DEPLOYMENT.md`.
+A raiz contém `render.yaml` para o primeiro staging com frontend React + backend FastAPI. O MongoDB é externo e deve oferecer replica set/transações.
+
+Fluxo de promoção:
+
+```text
+CI verde
+→ staging sem dados pessoais
+→ smoke externo
+→ backup + restauração testada
+→ infraestrutura/domínio de produção
+→ smoke produção
+→ merge/tag v1.0.0
+→ uso real
+```
+
+Consulte:
+
+- `docs/DEPLOYMENT.md` — configuração completa de staging/produção;
+- `docs/RELEASE_CHECKLIST.md` — checklist Go/No-Go;
+- `docs/ARCHITECTURE.md` — invariantes do motor financeiro.
 
 ## Compatibilidade legada
 
