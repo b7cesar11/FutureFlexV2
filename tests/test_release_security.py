@@ -5,16 +5,18 @@ import subprocess
 import sys
 from datetime import timedelta
 
+import bcrypt
 import jwt
 import pytest
 from fastapi import HTTPException
 
 from backend.ff.api.auth import _build_google_state, _validate_google_state
 from backend.ff.core.config import JWT_ALGORITHM, JWT_SECRET
+from backend.ff.core.security import hash_password, verify_password
 from backend.ff.models.base import now_utc
 
 
-def _config_process(**overrides):
+def _production_env(**overrides):
     env = os.environ.copy()
     env.update({
         "MONGO_URL": "mongodb://127.0.0.1:27017/?replicaSet=rs0",
@@ -24,21 +26,30 @@ def _config_process(**overrides):
         "ENABLE_DEMO_USER": "false",
         "COOKIE_SECURE": "true",
         "COOKIE_SAMESITE": "lax",
+        "PASSWORD_MIN_LENGTH": "15",
+        "CORS_ORIGINS": "https://app.example.com",
         "GOOGLE_CLIENT_ID": "",
         "GOOGLE_CLIENT_SECRET": "",
         "GOOGLE_REDIRECT_URI": "https://api.example.com/api/auth/google/callback",
     })
     env.update({key: str(value) for key, value in overrides.items()})
+    return env
+
+
+def _python_process(code: str, **overrides):
     return subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from backend.ff.core.config import validate_runtime_config; validate_runtime_config()",
-        ],
-        env=env,
+        [sys.executable, "-c", code],
+        env=_production_env(**overrides),
         capture_output=True,
         text=True,
         check=False,
+    )
+
+
+def _config_process(**overrides):
+    return _python_process(
+        "from backend.ff.core.config import validate_runtime_config; validate_runtime_config()",
+        **overrides,
     )
 
 
@@ -59,10 +70,48 @@ def test_production_accepts_secure_baseline():
     assert result.returncode == 0, result.stderr
 
 
-def test_samesite_none_requires_secure_cookie():
-    result = _config_process(COOKIE_SAMESITE="none", COOKIE_SECURE="false")
+def test_production_rejects_password_policy_below_15():
+    result = _config_process(PASSWORD_MIN_LENGTH="8")
+    assert result.returncode != 0
+    assert "PASSWORD_MIN_LENGTH" in (result.stderr + result.stdout)
+
+
+def test_production_requires_secure_cookies():
+    result = _config_process(COOKIE_SECURE="false")
+    assert result.returncode != 0
+    assert "COOKIE_SECURE" in (result.stderr + result.stdout)
+
+
+def test_production_rejects_wildcard_cors():
+    result = _config_process(CORS_ORIGINS="*")
+    assert result.returncode != 0
+    assert "wildcard" in (result.stderr + result.stdout)
+
+
+def test_samesite_none_requires_secure_cookie_even_outside_production():
+    result = _config_process(APP_ENV="test", COOKIE_SAMESITE="none", COOKIE_SECURE="false")
     assert result.returncode != 0
     assert "COOKIE_SAMESITE=none" in (result.stderr + result.stdout)
+
+
+def test_production_never_exposes_access_token_in_json_mode():
+    result = _python_process(
+        "from backend.ff.core.config import EXPOSE_ACCESS_TOKEN_IN_RESPONSE; "
+        "assert EXPOSE_ACCESS_TOKEN_IN_RESPONSE is False"
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_password_hash_uses_full_long_password_and_reads_legacy_bcrypt():
+    long_password = "frase-secreta-" + ("á" * 80) + "-fim"
+    hashed = hash_password(long_password)
+    assert hashed.startswith("bcrypt_sha256$")
+    assert verify_password(long_password, hashed)
+    assert not verify_password(long_password + "x", hashed)
+
+    legacy_password = "SenhaLegada@2026"
+    legacy_hash = bcrypt.hashpw(legacy_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    assert verify_password(legacy_password, legacy_hash)
 
 
 def test_google_oauth_state_is_bound_to_initiating_browser_cookie():
