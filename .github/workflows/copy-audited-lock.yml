@@ -1,0 +1,33 @@
+name: Copy Audited Lockfile
+
+on:
+  push:
+    branches: [agent/release-v1-hardening]
+    paths:
+      - .github/workflows/copy-audited-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-v1-hardening
+          fetch-depth: 0
+      - name: Copy exact lockfile validated on audit branch
+        run: |
+          git fetch origin agent/release-dependency-audit
+          git show FETCH_HEAD:frontend/yarn.lock > frontend/yarn.lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/yarn.lock
+          if git diff --cached --quiet; then
+            echo "Lockfile already matches audited branch"
+            exit 0
+          fi
+          git commit -m "chore: apply audited frontend lockfile"
+          git push origin HEAD:agent/release-v1-hardening
