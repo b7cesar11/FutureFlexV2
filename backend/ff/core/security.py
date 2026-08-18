@@ -1,10 +1,10 @@
-import os
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
 
-from .config import ACCESS_TOKEN_MINUTES, JWT_ALGORITHM, JWT_SECRET, REFRESH_TOKEN_DAYS
+from .config import (ACCESS_TOKEN_MINUTES, COOKIE_SAMESITE, COOKIE_SECURE,
+                     JWT_ALGORITHM, JWT_SECRET, REFRESH_TOKEN_DAYS)
 
 
 def hash_password(password: str) -> str:
@@ -34,12 +34,13 @@ def decode_token(token: str) -> dict:
 
 
 def set_auth_cookies(response, access_token: str, refresh_token: str):
-    response.set_cookie("access_token", access_token, httponly=True, secure=True,
-                        samesite="none", max_age=ACCESS_TOKEN_MINUTES * 60, path="/")
-    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True,
-                        samesite="none", max_age=REFRESH_TOKEN_DAYS * 86400, path="/")
+    response.set_cookie("access_token", access_token, httponly=True, secure=COOKIE_SECURE,
+                        samesite=COOKIE_SAMESITE, max_age=ACCESS_TOKEN_MINUTES * 60, path="/")
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=COOKIE_SECURE,
+                        samesite=COOKIE_SAMESITE, max_age=REFRESH_TOKEN_DAYS * 86400, path="/")
 
 
 def clear_auth_cookies(response):
     for name in ("access_token", "refresh_token", "session_token"):
-        response.delete_cookie(name, path="/")
+        response.delete_cookie(name, path="/", secure=COOKIE_SECURE,
+                               samesite=COOKIE_SAMESITE)
