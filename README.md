@@ -4,7 +4,7 @@ Future Flex V2 é uma aplicação de planejamento financeiro pessoal orientada a
 
 ## Estado do projeto
 
-O MVP funcional está implementado. O backend já possui regressão ampla para regras financeiras críticas (parcelamentos, cartões/faturas, pagamentos, valores dinâmicos, terceiros, congelamento, projeção, ownership e transações ACID). O trabalho atual é de **release hardening**: tornar execução, segurança, CI e deploy independentes do ambiente do Emergent.
+O MVP funcional está implementado. O backend possui regressão automatizada para regras financeiras críticas (parcelamentos, cartões/faturas, pagamentos, valores dinâmicos, terceiros, congelamento, projeção, ownership e transações ACID). O trabalho atual é de **release hardening**: tornar execução, segurança, CI e deploy reproduzíveis e independentes do antigo ambiente de desenvolvimento.
 
 ## Arquitetura
 
@@ -46,8 +46,8 @@ Mais detalhes: `docs/ARCHITECTURE.md`.
 
 - Python 3.11+
 - Node.js 20+
-- npm
-- MongoDB 7+ executando como replica set (ex.: `rs0`)
+- Yarn 1.22+
+- Docker/Compose para o MongoDB local, ou MongoDB 7+ executando como replica set
 
 ## Configuração
 
@@ -65,7 +65,7 @@ DB_NAME=futureflex
 JWT_SECRET=uma-chave-aleatoria-longa
 ```
 
-Para IA, configure preferencialmente:
+Para IA:
 
 ```env
 OPENAI_API_KEY=...
@@ -82,7 +82,7 @@ Nunca habilite `ENABLE_DEMO_USER` em produção.
 
 ### Google Login
 
-O fluxo novo usa OAuth 2.0 diretamente com credenciais do seu próprio projeto Google Cloud. Configure um cliente OAuth do tipo Web Application e registre exatamente o callback do backend.
+O login usa OAuth 2.0 diretamente com credenciais do seu próprio projeto Google Cloud. Configure um cliente OAuth do tipo Web Application e registre exatamente o callback do backend.
 
 ```env
 FRONTEND_URL=http://localhost:3000
@@ -139,14 +139,14 @@ GET /api/health
 
 ```bash
 cd frontend
-npm install
-npm start
+yarn install
+yarn start
 ```
 
 Build de produção:
 
 ```bash
-npm run build
+yarn build
 ```
 
 ## Testes
@@ -166,8 +166,18 @@ python -m pytest tests/test_dynamic_amounts.py -v
 Regressão E2E backend (requer backend em `localhost:8001` e conta demo habilitada):
 
 ```bash
-REACT_APP_BACKEND_URL=http://localhost:8001 python -m pytest backend/tests/backend_test.py -v
+python -m pytest backend/tests/backend_test.py -v
 ```
+
+Smoke E2E de navegador (requer backend local em `localhost:8001`; o Playwright sobe o frontend):
+
+```bash
+cd frontend
+yarn playwright install chromium
+yarn test:e2e
+```
+
+O GitHub Actions executa automaticamente regressão financeira, valores dinâmicos, E2E backend, build frontend e smoke de navegador.
 
 Há também scripts históricos das Etapas 3–6 na raiz usados durante a construção e QA do produto.
 
@@ -206,4 +216,4 @@ Antes de uma versão ser marcada como pronta para produção, execute o checklis
 
 ## Compatibilidade legada
 
-O endpoint antigo de sessão Google do Emergent foi mantido temporariamente para não quebrar previews históricos, mas o frontend novo não depende mais dele. A IA também usa a SDK oficial da OpenAI; `EMERGENT_LLM_KEY` existe apenas como fallback temporário de chave durante a migração.
+O backend ainda expõe temporariamente `POST /api/auth/google/session` apenas para responder de forma controlada a clientes antigos; ele não chama serviços externos legados. O frontend atual não usa esse endpoint. A IA utiliza diretamente a SDK oficial da OpenAI e exige `OPENAI_API_KEY` para responder.
