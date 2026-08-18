@@ -19,7 +19,6 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 12
 REFRESH_TOKEN_DAYS = 7
-GOOGLE_SESSION_DAYS = 7
 
 # Production-safe defaults. Demo data must always be explicitly enabled.
 ENABLE_DEMO_USER = env_bool("ENABLE_DEMO_USER", False)
@@ -38,7 +37,7 @@ CORS_ORIGINS = tuple(
     if origin.strip()
 )
 
-# Native Google OAuth (preferred). FRONTEND_URL is the post-login destination.
+# Native Google OAuth. FRONTEND_URL is the post-login destination.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
@@ -46,20 +45,12 @@ GOOGLE_REDIRECT_URI = os.environ.get(
     "GOOGLE_REDIRECT_URI", "http://localhost:8001/api/auth/google/callback"
 ).strip()
 
-# Legacy Emergent Google gateway kept temporarily for backward compatibility only.
-EMERGENT_SESSION_DATA_URL = os.environ.get(
-    "EMERGENT_SESSION_DATA_URL",
-    "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-)
-
 # Janela de materializacao de ocorrencias futuras (decisao do produto: 24 meses).
 PROJECTION_WINDOW_MONTHS = int(os.environ.get("PROJECTION_WINDOW_MONTHS", "24"))
 
-# AI can use a direct OpenAI key outside Emergent. The old key remains a fallback.
+# AI uses the official OpenAI API directly.
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "").strip()
 AI_MODEL = os.environ.get("AI_MODEL", "gpt-5.5").strip()
-AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").strip().lower()
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "60"))
 
 APP_TZ = "America/Sao_Paulo"
