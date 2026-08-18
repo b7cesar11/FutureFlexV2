@@ -11,10 +11,8 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from pydantic import BaseModel, EmailStr
 
-from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, EMERGENT_SESSION_DATA_URL,
-                           FRONTEND_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-                           GOOGLE_REDIRECT_URI, GOOGLE_SESSION_DAYS, JWT_ALGORITHM,
-                           JWT_SECRET)
+from ..core.config import (FRONTEND_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+                           GOOGLE_REDIRECT_URI, JWT_ALGORITHM, JWT_SECRET)
 from ..core.db import db
 from ..core.deps import get_current_user
 from ..core.security import (clear_auth_cookies, create_access_token, create_refresh_token,
@@ -67,7 +65,7 @@ async def _check_lockout(identifier: str):
 
 async def _upsert_google_user(data: dict) -> dict:
     email = str(data.get("email") or "").lower().strip()
-    google_sub = str(data.get("sub") or data.get("id") or "").strip()
+    google_sub = str(data.get("sub") or "").strip()
     if not email or not google_sub:
         raise HTTPException(status_code=401, detail="Identidade do Google incompleta")
 
@@ -164,9 +162,11 @@ async def google_start():
 async def google_callback(code: str | None = None, state: str | None = None,
                           error: str | None = None):
     if error:
-        return RedirectResponse(f"{FRONTEND_URL}/login?oauth_error={urlencode({'e': error})[2:]}")
+        return RedirectResponse(f"{FRONTEND_URL}/login?oauth_error=1", status_code=302)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Callback do Google incompleto")
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Login com Google ainda não configurado")
     try:
         state_payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         if state_payload.get("type") != "google_oauth_state":
@@ -187,8 +187,7 @@ async def google_callback(code: str | None = None, state: str | None = None,
         )
     if token_response.status_code != 200:
         raise HTTPException(status_code=401, detail="Não foi possível validar o login com Google")
-    token_data = token_response.json()
-    raw_id_token = token_data.get("id_token")
+    raw_id_token = token_response.json().get("id_token")
     if not raw_id_token:
         raise HTTPException(status_code=401, detail="Google não retornou identidade válida")
     try:
@@ -208,29 +207,10 @@ async def google_callback(code: str | None = None, state: str | None = None,
     return response
 
 
-# Legacy callback used by old Emergent previews. Kept temporarily so existing environments do not break.
+# Compatibility endpoint for old clients. It never contacts Emergent.
 @router.post("/google/session")
-async def google_session(request: Request, response: Response):
-    session_id = request.headers.get("X-Session-ID")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="X-Session-ID ausente")
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.get(EMERGENT_SESSION_DATA_URL,
-                                headers={"X-Session-ID": session_id})
-    if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail="Sessão do Google inválida")
-    data = resp.json()
-    user = await _upsert_google_user(data)
-
-    session_token = data.get("session_token") or f"ffs_{secrets.token_urlsafe(32)}"
-    await db.user_sessions.update_one({"session_token": session_token}, {"$set": {
-        "user_id": str(user["_id"]), "session_token": session_token,
-        "expires_at": now_utc() + timedelta(days=GOOGLE_SESSION_DAYS),
-        "created_at": now_utc()}}, upsert=True)
-    response.set_cookie("session_token", session_token, httponly=True, secure=COOKIE_SECURE,
-                        samesite=COOKIE_SAMESITE, max_age=GOOGLE_SESSION_DAYS * 86400,
-                        path="/")
-    return public_user(user)
+async def legacy_google_session():
+    raise HTTPException(status_code=401, detail="Fluxo legado do Google desativado")
 
 
 @router.post("/refresh")
