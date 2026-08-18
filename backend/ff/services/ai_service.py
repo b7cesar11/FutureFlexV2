@@ -13,7 +13,7 @@ from datetime import timedelta
 from bson import ObjectId
 from openai import AsyncOpenAI
 
-from ..core.config import AI_DAILY_LIMIT, AI_MODEL, EMERGENT_LLM_KEY, OPENAI_API_KEY
+from ..core.config import AI_DAILY_LIMIT, AI_MODEL, OPENAI_API_KEY
 from ..core.db import db
 from ..core.deps import DomainError
 from ..domain.money import money
@@ -38,11 +38,9 @@ REGRAS ABSOLUTAS:
 
 
 def _client() -> AsyncOpenAI:
-    # EMERGENT_LLM_KEY is retained only as a temporary compatibility fallback.
-    api_key = OPENAI_API_KEY or EMERGENT_LLM_KEY
-    if not api_key:
+    if not OPENAI_API_KEY:
         raise DomainError("Integração de IA não configurada", 503)
-    return AsyncOpenAI(api_key=api_key, timeout=30.0, max_retries=2)
+    return AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=30.0, max_retries=2)
 
 
 async def _check_rate_limit(user_id: str):
