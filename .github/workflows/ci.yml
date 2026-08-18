@@ -207,3 +207,126 @@ jobs:
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/futureflex-browser-backend.log || true
+
+  backup-restore-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MONGO_URL: mongodb://127.0.0.1:27017/?replicaSet=rs0
+      BACKUP_DB_NAME: futureflex_backup_ci
+      RESTORE_DB_NAME: futureflex_restore_ci
+      BACKUP_BUCKET: futureflex-backup-ci
+      BACKUP_S3_ENDPOINT: http://127.0.0.1:9000
+      AWS_ACCESS_KEY_ID: futureflex-ci
+      AWS_SECRET_ACCESS_KEY: futureflex-ci-secret
+      AWS_DEFAULT_REGION: us-east-1
+      BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MongoDB replica set and seed source data
+        run: |
+          docker run -d --name futureflex-backup-mongo -p 27017:27017 mongo:7 \
+            mongod --replSet rs0 --bind_ip_all
+          for i in {1..30}; do
+            if docker exec futureflex-backup-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec futureflex-backup-mongo mongosh --quiet --eval \
+            'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          for i in {1..30}; do
+            if docker exec futureflex-backup-mongo mongosh --quiet --eval \
+              'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval \
+            'db.getSiblingDB("futureflex_backup_ci").probe.insertOne({marker:"backup-smoke", amount:123.45})'
+
+      - name: Start S3-compatible object storage
+        run: |
+          docker run -d --name futureflex-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" \
+            -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" \
+            minio/minio:latest server /data --address :9000
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs futureflex-minio
+          exit 1
+
+      - name: Build backup image
+        run: docker build -f ops/backup/Dockerfile -t futureflex-backup .
+
+      - name: Create backup bucket
+        run: |
+          docker run --rm --network host \
+            --entrypoint aws \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            futureflex-backup \
+            s3api create-bucket --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket "$BACKUP_BUCKET"
+
+      - name: Create encrypted off-site backup
+        run: |
+          docker run --rm --network host \
+            -e BACKUP_MONGO_URL="$MONGO_URL" \
+            -e BACKUP_DB_NAME \
+            -e BACKUP_BUCKET \
+            -e BACKUP_S3_ENDPOINT \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            -e BACKUP_ENCRYPTION_PASSPHRASE \
+            -e BACKUP_RETENTION_DAILY=14 \
+            -e BACKUP_RETENTION_WEEKLY=8 \
+            -e BACKUP_RETENTION_MONTHLY=12 \
+            futureflex-backup
+
+      - name: Resolve uploaded backup object
+        run: |
+          OBJECT_KEY="$(docker run --rm --network host \
+            --entrypoint aws \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            futureflex-backup \
+            s3api list-objects-v2 \
+              --endpoint-url "$BACKUP_S3_ENDPOINT" \
+              --bucket "$BACKUP_BUCKET" \
+              --prefix futureflex/daily/ \
+              --query 'Contents[0].Key' \
+              --output text)"
+          test -n "$OBJECT_KEY"
+          test "$OBJECT_KEY" != "None"
+          echo "BACKUP_OBJECT_KEY=$OBJECT_KEY" >> "$GITHUB_ENV"
+
+      - name: Restore backup into an isolated database
+        run: |
+          docker run --rm --network host \
+            --entrypoint /usr/local/bin/futureflex-restore \
+            -e BACKUP_BUCKET \
+            -e BACKUP_S3_ENDPOINT \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_DEFAULT_REGION \
+            -e BACKUP_ENCRYPTION_PASSPHRASE \
+            -e BACKUP_OBJECT_KEY \
+            -e BACKUP_DB_NAME \
+            -e RESTORE_MONGO_URL="$MONGO_URL" \
+            -e RESTORE_DB_NAME \
+            futureflex-backup
+
+      - name: Verify restored data
+        run: |
+          COUNT="$(docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval \
+            'db.getSiblingDB("futureflex_restore_ci").probe.countDocuments({marker:"backup-smoke", amount:123.45})')"
+          test "$COUNT" = "1"
