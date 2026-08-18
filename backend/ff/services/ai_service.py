@@ -13,7 +13,8 @@ from datetime import timedelta
 from bson import ObjectId
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-from ..core.config import AI_DAILY_LIMIT, AI_MODEL, AI_PROVIDER, EMERGENT_LLM_KEY
+from ..core.config import (AI_DAILY_LIMIT, AI_MODEL, AI_PROVIDER, EMERGENT_LLM_KEY,
+                           OPENAI_API_KEY)
 from ..core.db import db
 from ..core.deps import DomainError
 from ..domain.money import money
@@ -38,10 +39,11 @@ REGRAS ABSOLUTAS:
 
 
 def _chat(session_id: str, extra_system: str = "") -> LlmChat:
-    if not EMERGENT_LLM_KEY:
+    api_key = OPENAI_API_KEY or EMERGENT_LLM_KEY
+    if not api_key:
         raise DomainError("Integração de IA não configurada", 503)
     return LlmChat(
-        api_key=EMERGENT_LLM_KEY,
+        api_key=api_key,
         session_id=session_id,
         system_message=SYSTEM_PROMPT + extra_system,
     ).with_model(AI_PROVIDER, AI_MODEL)
