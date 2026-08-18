@@ -24,6 +24,7 @@ def test_render_api_preserves_production_financial_guards():
     assert api["autoDeployTrigger"] == "checksPass"
     assert api["startCommand"] == "uvicorn server:app --host 0.0.0.0 --port $PORT"
     assert env["APP_ENV"]["value"] == "production"
+    assert env["PASSWORD_MIN_LENGTH"]["value"] == "15"
     assert env["REQUIRE_REPLICA_SET"]["value"] == "true"
     assert env["ENABLE_DEMO_USER"]["value"] == "false"
     assert env["COOKIE_SECURE"]["value"] == "true"
