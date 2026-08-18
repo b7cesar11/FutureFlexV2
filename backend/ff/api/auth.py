@@ -17,7 +17,8 @@ from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, FRONTEND_URL, GOOGLE_
 from ..core.db import db
 from ..core.deps import get_current_user
 from ..core.security import (clear_auth_cookies, create_access_token, create_refresh_token,
-                             decode_token, hash_password, set_auth_cookies, verify_password)
+                             decode_token, hash_password, password_hash_needs_upgrade,
+                             set_auth_cookies, validate_new_password, verify_password)
 from ..models.base import now_utc
 from ..models.entities import User, UserProfile
 from ..services.seed_service import seed_user_defaults
@@ -150,8 +151,11 @@ async def register(payload: RegisterIn, response: Response):
     email = payload.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="E-mail já cadastrado")
-    if len(payload.password) < 6:
-        raise HTTPException(status_code=400, detail="A senha deve ter ao menos 6 caracteres")
+    try:
+        validate_new_password(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     user = User(email=email, password_hash=hash_password(payload.password),
                 auth_providers=["password"],
                 profile=UserProfile(name=payload.name or email.split("@")[0]))
@@ -162,7 +166,8 @@ async def register(payload: RegisterIn, response: Response):
     access = create_access_token(user_id, email)
     set_auth_cookies(response, access, create_refresh_token(user_id))
     doc["_id"] = user_id
-    return {**public_user(doc), "access_token": access}
+    # Auth tokens intentionally remain only in HttpOnly cookies for browser clients.
+    return public_user(doc)
 
 
 @router.post("/login")
@@ -171,16 +176,26 @@ async def login(payload: LoginIn, request: Request, response: Response):
     identifier = f"{request.client.host if request.client else 'unknown'}:{email}"
     await _check_lockout(identifier)
     user = await db.users.find_one({"email": email})
-    if not user or not verify_password(payload.password, user.get("password_hash") or ""):
+    stored_hash = user.get("password_hash") if user else ""
+    if not user or not verify_password(payload.password, stored_hash or ""):
         await db.login_attempts.update_one({"identifier": identifier},
                                           {"$inc": {"count": 1},
                                            "$set": {"last_attempt": now_utc()}}, upsert=True)
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+
     await db.login_attempts.delete_one({"identifier": identifier})
+    if password_hash_needs_upgrade(stored_hash or ""):
+        upgraded = hash_password(payload.password)
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"password_hash": upgraded, "updated_at": now_utc()}},
+        )
+        user["password_hash"] = upgraded
+
     user_id = str(user["_id"])
     access = create_access_token(user_id, email)
     set_auth_cookies(response, access, create_refresh_token(user_id))
-    return {**public_user(user), "access_token": access}
+    return public_user(user)
 
 
 @router.get("/google/start")
