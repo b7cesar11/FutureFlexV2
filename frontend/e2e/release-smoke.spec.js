@@ -35,7 +35,7 @@ async function registerAndOnboard(page, { balance = 2500, accountName = "Conta Q
   await page.getByTestId("auth-toggle-mode").click();
   await page.getByTestId("register-name").fill("QA Release");
   await page.getByTestId("auth-email").fill(uniqueEmail());
-  await page.getByTestId("auth-password").fill("Release@2026");
+  await page.getByTestId("auth-password").fill("Release Future Flex 2026");
   await page.getByTestId("auth-submit").click();
 
   await expect(page.getByTestId("onboarding-page")).toBeVisible();
