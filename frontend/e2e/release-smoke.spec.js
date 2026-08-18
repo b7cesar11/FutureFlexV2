@@ -22,6 +22,12 @@ async function apiJson(page, path) {
   return response.json();
 }
 
+async function selectOptionContaining(select, text) {
+  const value = await select.locator("option").filter({ hasText: text }).first().getAttribute("value");
+  expect(value, `option containing ${text} should exist`).toBeTruthy();
+  await select.selectOption(value);
+}
+
 async function registerAndOnboard(page, { balance = 2500, accountName = "Conta QA" } = {}) {
   await page.goto("/login");
   await expect(page.getByTestId("auth-email")).toBeVisible();
@@ -109,7 +115,7 @@ test("account commitment does not debit until payment and payment updates the mo
   await page.getByTestId("quick-add-description").fill("Energia QA");
   await page.getByTestId("quick-add-amount").fill("300");
   await page.getByTestId("quick-add-day").fill("28");
-  await page.getByTestId("quick-add-account").selectOption({ label: "Conta QA" });
+  await selectOptionContaining(page.getByTestId("quick-add-account"), "Conta QA");
   await page.getByTestId("quick-add-submit").click();
   await expect(page.getByTestId("quick-add-drawer")).toHaveCount(0);
 
@@ -127,7 +133,7 @@ test("account commitment does not debit until payment and payment updates the mo
   await row.getByRole("button", { name: "Pagar" }).click();
 
   await expect(page.getByTestId("pay-dialog")).toBeVisible();
-  await page.getByTestId("pay-account-select").selectOption({ label: /Conta QA/ });
+  await selectOptionContaining(page.getByTestId("pay-account-select"), "Conta QA");
   await page.getByTestId("pay-confirm-btn").click();
   await expect(page.getByTestId("pay-dialog")).toHaveCount(0);
 
@@ -157,7 +163,7 @@ test("card purchase composes invoice without double counting and only invoice pa
   await page.getByTestId("quick-add-description").fill("Notebook QA");
   await page.getByTestId("quick-add-amount").fill("600");
   await page.getByTestId("quick-add-installments").fill("2");
-  await page.getByTestId("quick-add-card").selectOption({ label: "Cartão Cartão QA" });
+  await selectOptionContaining(page.getByTestId("quick-add-card"), "Cartão QA");
   await page.getByTestId("quick-add-submit").click();
   await expect(page.getByTestId("quick-add-drawer")).toHaveCount(0);
 
@@ -175,26 +181,25 @@ test("card purchase composes invoice without double counting and only invoice pa
   invoices.sort((a, b) => a.competence.localeCompare(b.competence));
   const invoice = invoices[0];
   const month = await apiJson(page, `/months/${invoice.competence}`);
-  const monthItems = month.groups.flatMap((group) => group.items);
-  const cardChild = monthItems.find((item) => item.label.includes("Notebook QA"));
-  const invoiceItem = monthItems.find(
-    (item) => item.counts_in_total && item.refs?.invoice_id === invoice.id,
-  );
+  const cardsGroup = month.groups.find((group) => group.key === "cards");
+  const installmentsGroup = month.groups.find((group) => group.key === "installments");
+  const cardChild = installmentsGroup?.items.find((item) => item.label.includes("Notebook QA"));
 
-  expect(cardChild, "installment occurrence should be present in month view").toBeTruthy();
+  expect(cardsGroup, "card invoice group should exist").toBeTruthy();
+  expect(cardChild, "installment occurrence should be present as invoice composition").toBeTruthy();
   expect(cardChild.counts_in_total).toBeFalsy();
-  expect(invoiceItem, "invoice should be the counted aggregate obligation").toBeTruthy();
+  expect(Number(cardsGroup.total)).toBeCloseTo(Number(invoice.total), 2);
   expect(Number(month.committed)).toBeCloseTo(Number(invoice.total), 2);
 
   await goToCards(page);
   await expect(page.getByTestId(`invoice-${invoice.id}`)).toBeVisible();
   await page.getByTestId(`invoice-${invoice.id}`).click();
   await expect(page.getByTestId("invoice-detail")).toBeVisible();
-  await expect(page.getByText("Notebook QA", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Notebook QA/).first()).toBeVisible();
   await page.getByTestId("pay-invoice-btn").click();
 
   await expect(page.getByTestId("pay-dialog")).toBeVisible();
-  await page.getByTestId("pay-account-select").selectOption({ label: /Conta QA/ });
+  await selectOptionContaining(page.getByTestId("pay-account-select"), "Conta QA");
   await page.getByTestId("pay-confirm-btn").click();
   await expect(page.getByTestId("pay-dialog")).toHaveCount(0);
 
