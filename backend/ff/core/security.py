@@ -7,6 +7,7 @@ import jwt
 from .config import (ACCESS_TOKEN_MINUTES, COOKIE_SAMESITE, COOKIE_SECURE,
                      JWT_ALGORITHM, JWT_SECRET, PASSWORD_MAX_LENGTH,
                      PASSWORD_MIN_LENGTH, REFRESH_TOKEN_DAYS)
+from .csrf import clear_csrf_cookie, set_csrf_cookie
 
 
 # Password login is currently a single authentication factor. Keep the policy
@@ -75,9 +76,13 @@ def set_auth_cookies(response, access_token: str, refresh_token: str):
                         samesite=COOKIE_SAMESITE, max_age=ACCESS_TOKEN_MINUTES * 60, path="/")
     response.set_cookie("refresh_token", refresh_token, httponly=True, secure=COOKIE_SECURE,
                         samesite=COOKIE_SAMESITE, max_age=REFRESH_TOKEN_DAYS * 86400, path="/")
+    # CSRF is tied to the refresh credential. The value is also exposed as a response
+    # header so trusted SPA JavaScript can echo it without making the cookie readable.
+    set_csrf_cookie(response, refresh_token)
 
 
 def clear_auth_cookies(response):
     for name in ("access_token", "refresh_token", "session_token"):
         response.delete_cookie(name, path="/", secure=COOKIE_SECURE,
                                samesite=COOKIE_SAMESITE)
+    clear_csrf_cookie(response)
