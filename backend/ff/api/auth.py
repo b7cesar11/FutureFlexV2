@@ -1,12 +1,13 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 import httpx
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 
-from ..core.config import EMERGENT_SESSION_DATA_URL, GOOGLE_SESSION_DAYS
+from ..core.config import (COOKIE_SAMESITE, COOKIE_SECURE, EMERGENT_SESSION_DATA_URL,
+                           GOOGLE_SESSION_DAYS)
 from ..core.db import db
 from ..core.deps import get_current_user
 from ..core.security import (clear_auth_cookies, create_access_token, create_refresh_token,
@@ -131,8 +132,9 @@ async def google_session(request: Request, response: Response):
         "user_id": str(user["_id"]), "session_token": session_token,
         "expires_at": now_utc() + timedelta(days=GOOGLE_SESSION_DAYS),
         "created_at": now_utc()}}, upsert=True)
-    response.set_cookie("session_token", session_token, httponly=True, secure=True,
-                        samesite="none", max_age=GOOGLE_SESSION_DAYS * 86400, path="/")
+    response.set_cookie("session_token", session_token, httponly=True, secure=COOKIE_SECURE,
+                        samesite=COOKIE_SAMESITE, max_age=GOOGLE_SESSION_DAYS * 86400,
+                        path="/")
     return public_user(user)
 
 
