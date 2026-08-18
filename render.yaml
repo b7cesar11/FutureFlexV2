@@ -1,7 +1,7 @@
 # Future Flex V2 — staging/release-candidate infrastructure.
 # This Blueprint intentionally uses Render's free web instance for the first deployment.
 # Upgrade the API service to a paid production instance before storing real financial data.
-# MongoDB remains external (recommended: MongoDB Atlas) because ACID transactions are mandatory.
+# MongoDB remains external because ACID transactions are mandatory.
 
 services:
   - type: web
@@ -74,3 +74,43 @@ services:
       - path: /*
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
+
+  # Daily encrypted off-site backup. Render cron jobs are paid by active runtime
+  # with a minimum monthly charge, but do not depend on the web service being awake.
+  # 06:17 UTC = 03:17 America/Sao_Paulo (BRT).
+  - type: cron
+    name: futureflex-mongodb-backup
+    runtime: docker
+    plan: starter
+    schedule: "17 6 * * *"
+    dockerfilePath: ./ops/backup/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: BACKUP_MONGO_URL
+        sync: false
+      - key: BACKUP_DB_NAME
+        value: futureflex_staging
+      - key: BACKUP_BUCKET
+        sync: false
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_DEFAULT_REGION
+        value: auto
+      - key: BACKUP_ENCRYPTION_PASSPHRASE
+        sync: false
+      - key: BACKUP_PREFIX
+        value: futureflex
+      - key: BACKUP_TIMEZONE
+        value: America/Sao_Paulo
+      # Rotation: 14 daily + 8 weekly + 12 monthly restore points.
+      - key: BACKUP_RETENTION_DAILY
+        value: "14"
+      - key: BACKUP_RETENTION_WEEKLY
+        value: "8"
+      - key: BACKUP_RETENTION_MONTHLY
+        value: "12"
