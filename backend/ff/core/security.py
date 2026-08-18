@@ -5,13 +5,12 @@ import bcrypt
 import jwt
 
 from .config import (ACCESS_TOKEN_MINUTES, COOKIE_SAMESITE, COOKIE_SECURE,
-                     JWT_ALGORITHM, JWT_SECRET, REFRESH_TOKEN_DAYS)
+                     JWT_ALGORITHM, JWT_SECRET, PASSWORD_MAX_LENGTH,
+                     PASSWORD_MIN_LENGTH, REFRESH_TOKEN_DAYS)
 
 
 # Password login is currently a single authentication factor. Keep the policy
 # length-based (passphrases welcome) instead of requiring artificial character classes.
-PASSWORD_MIN_LENGTH = 15
-PASSWORD_MAX_LENGTH = 128
 _PASSWORD_SCHEME = "bcrypt_sha256$"
 
 
