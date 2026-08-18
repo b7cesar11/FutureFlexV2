@@ -79,8 +79,8 @@ jobs:
           cat /tmp/futureflex-backend.log
           exit 1
 
-      - name: Release security guards
-        run: python -m pytest tests/test_release_security.py -v
+      - name: Release security and deploy guards
+        run: python -m pytest tests/test_release_security.py tests/test_deploy_config.py -v
 
       - name: Core financial rules
         run: python -m pytest tests/test_business_rules.py -v
