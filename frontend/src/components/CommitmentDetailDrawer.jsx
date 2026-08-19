@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Link2, Pencil, Snowflake, X } from "lucide-react";
+import { Link2, Pencil, Snowflake, Trash2, X } from "lucide-react";
 import { apiError, brl, formatDate, http, shortCompetence, STATUS_META } from "@/lib/api";
 import { StatusBadge } from "@/components/ui-kit/Primitives";
 import { EditAmountDialog } from "@/components/EditAmountDialog";
@@ -9,6 +9,12 @@ import { EditAmountDialog } from "@/components/EditAmountDialog";
 export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
   const queryClient = useQueryClient();
   const [editTarget, setEditTarget] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+    setEditTarget(null);
+  }, [commitmentId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["commitment", commitmentId],
@@ -22,6 +28,17 @@ export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
     onSuccess: (_res, frozen) => {
       toast.success(frozen ? "Compromisso congelado" : "Compromisso descongelado");
       queryClient.invalidateQueries();
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => http.delete(`/commitments/${commitmentId}/mistake`),
+    onSuccess: () => {
+      toast.success("Cadastro excluído");
+      queryClient.invalidateQueries();
+      setConfirmDelete(false);
+      onClose();
     },
     onError: (e) => toast.error(apiError(e)),
   });
@@ -120,6 +137,44 @@ export const CommitmentDetailDrawer = ({ commitmentId, onClose }) => {
               <Snowflake size={15} />
               {data.frozen ? "Descongelar compromisso" : "Congelar compromisso"}
             </button>
+
+            {!confirmDelete ? (
+              <button
+                data-testid="detail-delete-btn"
+                onClick={() => setConfirmDelete(true)}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-rose-500/30 py-2.5 text-sm text-rose-400 transition-colors hover:bg-rose-500/10"
+              >
+                <Trash2 size={15} /> Excluir cadastro feito por engano
+              </button>
+            ) : (
+              <div
+                className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/5 p-4"
+                data-testid="detail-delete-confirm"
+              >
+                <p className="text-sm font-medium text-rose-300">Excluir definitivamente este cadastro?</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+                  Só é permitido quando ainda não houve pagamento ou movimentação financeira. Se houver histórico,
+                  o sistema bloqueará a exclusão automaticamente.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    data-testid="detail-delete-cancel"
+                    onClick={() => setConfirmDelete(false)}
+                    className="flex-1 rounded-md border border-zinc-800 py-2 text-xs text-zinc-300 hover:bg-zinc-800"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    data-testid="detail-delete-confirm-btn"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate()}
+                    className="flex-1 rounded-md bg-rose-500 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {deleteMutation.isPending ? "Excluindo..." : "Excluir definitivamente"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <p className="label-caps mt-7 mb-3">Próximas ocorrências</p>
             <div className="space-y-1.5" data-testid="detail-occurrences">
