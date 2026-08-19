@@ -193,20 +193,28 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   await page.getByTestId("card-name").fill("Cartão temporário");
   await page.getByTestId("card-limit").fill("1000,50");
   await page.getByTestId("card-save").click();
+  await expect(page.getByText("Cartão temporário", { exact: true })).toBeVisible();
   let cards = await apiJson(page, "/credit-cards");
   const temporary = cards.find((item) => item.name === "Cartão temporário");
   expect(temporary).toBeTruthy();
+  expect(Number(temporary.limit)).toBeCloseTo(1000.5, 2);
 
   await page.getByTestId(`card-edit-${temporary.id}`).click();
   await page.getByTestId("card-name").fill("Cartão corrigido");
   await page.getByTestId("card-save").click();
-  cards = await apiJson(page, "/credit-cards");
-  expect(cards.find((item) => item.id === temporary.id)?.name).toBe("Cartão corrigido");
+  await expect(page.getByText("Cartão corrigido", { exact: true })).toBeVisible();
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/credit-cards");
+    return current.find((item) => item.id === temporary.id)?.name;
+  }).toBe("Cartão corrigido");
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId(`card-delete-${temporary.id}`).click();
-  cards = await apiJson(page, "/credit-cards");
-  expect(cards.some((item) => item.id === temporary.id)).toBeFalsy();
+  await expect(page.getByTestId(`card-${temporary.id}`)).toHaveCount(0);
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/credit-cards");
+    return current.some((item) => item.id === temporary.id);
+  }).toBeFalsy();
 
   await page.getByTestId("new-card-btn").click();
   await page.getByTestId("card-name").fill("Cartão Fatura QA");
@@ -214,6 +222,7 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   await page.getByTestId("card-closing-day").fill("28");
   await page.getByTestId("card-due-day").fill("5");
   await page.getByTestId("card-save").click();
+  await expect(page.getByText("Cartão Fatura QA", { exact: true })).toBeVisible();
 
   await openQuickAdd(page);
   await page.getByTestId("quick-add-type-purchase_installment").click();
@@ -222,12 +231,17 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   await page.getByTestId("quick-add-installments").fill("1");
   await selectContaining(page.getByTestId("quick-add-card"), "Cartão Fatura QA");
   await page.getByTestId("quick-add-submit").click();
+  await expect(page.getByTestId("quick-add-drawer")).toHaveCount(0);
 
-  let invoices = (await apiJson(page, "/invoices")).filter((item) => Number(item.total) > 0);
-  expect(invoices.length).toBeGreaterThan(0);
+  let invoices = [];
+  await expect.poll(async () => {
+    invoices = (await apiJson(page, "/invoices")).filter((item) => Number(item.total) > 0);
+    return invoices.length;
+  }).toBeGreaterThan(0);
   const invoice = invoices[0];
 
   await goCards(page);
+  await expect(page.getByTestId(`invoice-${invoice.id}`)).toBeVisible();
   await page.getByTestId(`invoice-${invoice.id}`).click();
   await expect(page.getByTestId("invoice-detail")).toBeVisible();
   const editButton = page.locator('button[data-testid^="invoice-item-edit-"]').first();
@@ -238,8 +252,10 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   await expect(page.getByTestId("edit-amount-dialog")).toHaveCount(0);
   await expect(page.getByTestId("invoice-total")).toContainText("333,33");
 
-  invoices = await apiJson(page, "/invoices");
-  expect(Number(invoices.find((item) => item.id === invoice.id).total)).toBeCloseTo(333.33, 2);
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/invoices");
+    return Number(current.find((item) => item.id === invoice.id)?.total || 0);
+  }).toBeCloseTo(333.33, 2);
 
   await page.getByTestId("invoice-detail-close").click();
   await expect(page.getByTestId("invoice-detail")).toHaveCount(0);
