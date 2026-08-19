@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowRight, Check, PiggyBank, Sparkles, Wallet } from "lucide-react";
-import { apiError, brl, http } from "@/lib/api";
+import { apiError, brl, http, parseMoneyInput } from "@/lib/api";
 
 const field =
   "w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-[#ccff00]";
@@ -35,10 +35,12 @@ export default function Onboarding() {
   const createAccount = useMutation({
     mutationFn: async () => {
       if (!account.name.trim()) throw new Error("Informe o nome da conta");
+      const openingBalance = account.opening_balance ? parseMoneyInput(account.opening_balance) : 0;
+      if (!Number.isFinite(openingBalance)) throw new Error("Informe um saldo inicial válido");
       const { data } = await http.post("/accounts", {
         name: account.name.trim(),
         type: account.type,
-        opening_balance: Number(account.opening_balance || 0),
+        opening_balance: openingBalance,
       });
       return data;
     },
@@ -52,9 +54,9 @@ export default function Onboarding() {
 
   const createIncome = useMutation({
     mutationFn: async () => {
-      const amount = Number(income.amount);
+      const amount = parseMoneyInput(income.amount);
       if (!income.description.trim()) throw new Error("Informe o nome da renda");
-      if (!amount || amount <= 0) throw new Error("Informe um valor válido");
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Informe um valor válido");
       return http.post("/commitments", {
         type: "recurring_income",
         description: income.description.trim(),
@@ -159,7 +161,7 @@ export default function Onboarding() {
                 <label className="mb-1.5 block text-xs text-zinc-400">Saldo inicial</label>
                 <input
                   className={`${field} num`}
-                  placeholder="0,00"
+                  placeholder="Ex.: 2500,75"
                   inputMode="decimal"
                   data-testid="onboarding-account-balance"
                   value={account.opening_balance}
@@ -299,7 +301,9 @@ export default function Onboarding() {
 
         {account.opening_balance !== "" && step === "account" && (
           <p className="mt-4 text-center text-[11px] text-zinc-600">
-            Saldo inicial: {brl(Number(account.opening_balance || 0))}
+            Saldo inicial: {Number.isFinite(parseMoneyInput(account.opening_balance))
+              ? brl(parseMoneyInput(account.opening_balance))
+              : "valor inválido"}
           </p>
         )}
       </div>
