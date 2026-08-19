@@ -135,8 +135,8 @@ jobs:
       ENABLE_DEMO_USER: "false"
       COOKIE_SECURE: "false"
       COOKIE_SAMESITE: lax
-      FRONTEND_URL: http://127.0.0.1:3000
-      CORS_ORIGINS: http://127.0.0.1:3000
+      FRONTEND_URL: http://127.0.0.1:8001
+      CORS_ORIGINS: http://127.0.0.1:8001
       OPENAI_API_KEY: ""
 
     steps:
@@ -172,19 +172,6 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
 
-      - name: Start backend
-        working-directory: backend
-        run: |
-          nohup python -m uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/futureflex-browser-backend.log 2>&1 &
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          cat /tmp/futureflex-browser-backend.log
-          exit 1
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -196,12 +183,34 @@ jobs:
         working-directory: frontend
         run: yarn install --frozen-lockfile --non-interactive
 
+      - name: Build same-origin frontend
+        working-directory: frontend
+        env:
+          CI: "false"
+          REACT_APP_BACKEND_URL: ""
+        run: yarn build
+
+      - name: Start full-stack server
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/futureflex-browser-backend.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null && curl -fsS http://127.0.0.1:8001/ >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/futureflex-browser-backend.log
+          exit 1
+
       - name: Install Chromium
         working-directory: frontend
         run: yarn playwright install --with-deps chromium
 
-      - name: Browser release smoke
+      - name: Browser release smoke (same origin)
         working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
         run: yarn test:e2e
 
       - name: Show backend log on failure
