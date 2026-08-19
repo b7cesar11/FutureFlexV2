@@ -213,3 +213,52 @@ async def create_transaction(user_id: str, payload: dict, idempotency_key: str |
     await idempotency.store_result(user_id, idempotency_key, "create_transaction", tx.id,
                                   session=session)
     return {"transaction_id": tx.id, "amount": amount}
+
+
+async def delete_manual_transaction(user_id: str, transaction_id: str, session=None) -> dict:
+    """Exclui um lançamento avulso manual e estorna exatamente seu efeito no saldo.
+
+    Pagamentos de compromisso/fatura e recebimentos ligados a ocorrências são histórico
+    financeiro e nunca podem ser apagados por esta operação.
+    """
+    tx = await repo.transactions.get(user_id, transaction_id, session=session)
+    if not tx:
+        raise DomainError("Transação não encontrada", 404)
+
+    manual_types = {"expense", "income", "transfer"}
+    if (
+        tx.type not in manual_types
+        or tx.source != "manual"
+        or tx.occurrence_id
+        or tx.invoice_id
+    ):
+        raise DomainError(
+            "Esta transação faz parte de um pagamento financeiro e não pode ser excluída.",
+            409,
+        )
+
+    balances = {}
+    if tx.type == "transfer":
+        if not tx.account_id or not tx.to_account_id:
+            raise DomainError("Transferência inconsistente; exclusão bloqueada", 409)
+        balances["source_balance"] = await _apply_to_account(
+            user_id, tx.account_id, tx.amount, session=session
+        )
+        balances["destination_balance"] = await _apply_to_account(
+            user_id, tx.to_account_id, -tx.amount, session=session
+        )
+    elif tx.type == "expense":
+        if not tx.account_id:
+            raise DomainError("Transação sem conta; exclusão bloqueada", 409)
+        balances["account_balance"] = await _apply_to_account(
+            user_id, tx.account_id, tx.amount, session=session
+        )
+    else:  # income
+        if not tx.account_id:
+            raise DomainError("Transação sem conta; exclusão bloqueada", 409)
+        balances["account_balance"] = await _apply_to_account(
+            user_id, tx.account_id, -tx.amount, session=session
+        )
+
+    await repo.transactions.delete(user_id, transaction_id, session=session)
+    return {"transaction_id": transaction_id, "deleted": True, **balances}
