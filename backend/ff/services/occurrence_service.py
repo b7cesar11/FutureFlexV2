@@ -1,20 +1,8 @@
-"""Valores dinamicos por competencia (Etapa 3).
+"""Valores dinâmicos por competência.
 
-Permite que um MESMO commitment tenha valores diferentes em cada occurrence,
-sem transformar cada mes em um novo commitment. A occurrence continua sendo a
-representacao da obrigacao naquela competencia; muda apenas o seu `amount`.
-
-Auditabilidade: cada occurrence carrega `amount_source`:
-  - "default"  -> usa o valor padrao do commitment (installment_amount)
-  - "override" -> valor customizado manualmente para aquela competencia
-
-Regras preservadas:
-  - Ownership sempre pelo user_id autenticado (nunca confiar no frontend).
-  - Ocorrencias pagas/canceladas sao imutaveis (historico intacto).
-  - Customizacoes ("override") nunca sao sobrescritas por materializacoes futuras
-    (amount e amount_source sao INSERT-ONLY em commitment_service.materialize).
-  - Faturas afetadas sao recalculadas (anti-dupla-contagem preservada).
-  - Toda a operacao roda dentro do UnitOfWork (ACID) fornecido pela API.
+A ocorrência é a fonte do valor daquele mês. Faturas são agregados calculados e, por
+isso, nunca recebem override direto: edita-se o item que compõe a fatura e o total é
+recalculado pelo invoice_service.
 """
 import math
 
@@ -58,12 +46,18 @@ async def update_occurrence_amount(user_id: str, occurrence_id: str, amount,
         raise DomainError("Modo de alteração inválido.", 422)
     new_amount = _validate_amount(amount)
 
-    # Ownership: repo faz o scope por user_id; occurrence de outro usuario = 404.
     occ = await repo.occurrences.get(user_id, occurrence_id, session=session)
     if not occ:
         raise DomainError("Ocorrência não encontrada.", 404)
 
-    # Imutabilidade de historico: paga ou cancelada nao pode ser alterada.
+    # A fatura é a soma dos filhos. Permitir override aqui criaria exatamente a
+    # inconsistência 'ajustado' + total antigo após o recálculo.
+    if occ.kind == "invoice":
+        raise DomainError(
+            "O total da fatura é calculado pelos itens que a compõem. Edite o lançamento dentro da fatura.",
+            422,
+        )
+
     if occ.state == "paid":
         raise DomainError("Esta ocorrência já foi paga e não pode ter seu valor alterado.", 409)
     if occ.state == "cancelled":
@@ -99,13 +93,10 @@ async def _update_single(user_id, occ, new_amount, session) -> dict:
 
 async def _update_this_and_future(user_id, occ, commitment, new_amount, session) -> dict:
     target_comp = occ.competence
-    # 1) a occurrence selecionada e sempre atualizada (override), mesmo se ja era override.
     await repo.occurrences.update(
         user_id, occ.id,
         {"amount": new_amount, "amount_source": "override", "updated_at": now_utc()},
         session=session)
-    # 2) competencias FUTURAS (> alvo), abertas, sem pagamento e que ainda nao foram
-    #    customizadas manualmente. Overrides anteriores sao preservados.
     res = await repo.occurrences.update_many(
         user_id,
         {"commitment_id": commitment.id, "competence": {"$gt": target_comp},
@@ -127,11 +118,10 @@ async def _update_default(user_id, occ, commitment, new_amount, session) -> dict
         raise DomainError("Ocorrência avulsa não possui valor padrão.", 422)
     if commitment.installments_total:
         raise DomainError(
-            "Compromissos parcelados não possuem valor padrão editável. "
-            "Edite a parcela específica.", 422)
+            "Compromissos parcelados não possuem valor padrão editável. Edite a parcela específica.",
+            422,
+        )
 
-    # Novo valor padrao do commitment (recorrencia): afeta apenas ocorrencias futuras
-    # que ainda usam o padrao. Historico/pagas e overrides sao preservados.
     await repo.commitments.update(
         user_id, commitment.id,
         {"installment_amount": new_amount, "total_amount": new_amount,
