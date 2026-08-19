@@ -116,6 +116,7 @@ test("people and unpaid third-party records can be corrected, rescheduled and de
 
   await page.getByTestId("person-name").fill("Ana duplicada");
   await page.getByTestId("person-save").click();
+  await expect(page.getByText("Ana duplicada", { exact: true }).first()).toBeVisible();
   let people = await apiJson(page, "/people");
   const duplicate = people.find((item) => item.name === "Ana duplicada");
   expect(duplicate).toBeTruthy();
@@ -123,11 +124,13 @@ test("people and unpaid third-party records can be corrected, rescheduled and de
   await page.getByTestId(`person-edit-${duplicate.id}`).click();
   await page.getByTestId("person-name").fill("Ana corrigida");
   await page.getByTestId("person-save").click();
+  await expect(page.getByText("Ana corrigida", { exact: true }).first()).toBeVisible();
   people = await apiJson(page, "/people");
   expect(people.find((item) => item.id === duplicate.id)?.name).toBe("Ana corrigida");
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId(`person-delete-${duplicate.id}`).click();
+  await expect(page.getByTestId(`person-delete-${duplicate.id}`)).toHaveCount(0);
   people = await apiJson(page, "/people");
   expect(people.some((item) => item.id === duplicate.id)).toBeFalsy();
 
@@ -154,22 +157,32 @@ test("people and unpaid third-party records can be corrected, rescheduled and de
   await page.getByTestId("tp-amount").fill("175,75");
   await page.getByTestId("tp-start-date").fill(correctedDue);
   await page.getByTestId("tp-save").click();
+  await expect(page.getByText(/Ana QA · Dívida corrigida/)).toBeVisible();
 
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/third-parties");
+    return current.items.find((item) => item.id === rel.id)?.description;
+  }).toBe("Dívida corrigida");
   thirdParties = await apiJson(page, "/third-parties");
   const corrected = thirdParties.items.find((item) => item.id === rel.id);
-  expect(corrected.description).toBe("Dívida corrigida");
   expect(Number(corrected.total)).toBeCloseTo(175.75, 2);
   expect(String(corrected.first_due_date).slice(0, 10)).toBe(correctedDue);
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId(`tp-delete-${rel.id}`).click();
-  thirdParties = await apiJson(page, "/third-parties");
-  expect(thirdParties.items.some((item) => item.id === rel.id)).toBeFalsy();
+  await expect(page.getByTestId(`tp-item-${rel.id}`)).toHaveCount(0);
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/third-parties");
+    return current.items.some((item) => item.id === rel.id);
+  }).toBeFalsy();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId(`person-delete-${ana.id}`).click();
-  people = await apiJson(page, "/people");
-  expect(people.some((item) => item.id === ana.id)).toBeFalsy();
+  await expect(page.getByTestId(`person-delete-${ana.id}`)).toHaveCount(0);
+  await expect.poll(async () => {
+    const current = await apiJson(page, "/people");
+    return current.some((item) => item.id === ana.id);
+  }).toBeFalsy();
 });
 
 test("unused cards can be edited/deleted and invoice values are corrected through their items", async ({ page }) => {
@@ -228,7 +241,6 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   invoices = await apiJson(page, "/invoices");
   expect(Number(invoices.find((item) => item.id === invoice.id).total)).toBeCloseTo(333.33, 2);
 
-  // Navigation should happen after closing the modal; clicking through a modal is not a valid user flow.
   await page.getByTestId("invoice-detail-close").click();
   await expect(page.getByTestId("invoice-detail")).toHaveCount(0);
   await goCommitments(page);
