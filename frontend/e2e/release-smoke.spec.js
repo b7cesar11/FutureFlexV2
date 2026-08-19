@@ -106,6 +106,16 @@ test("new user can register, onboard, reload and reach commitments", async ({ pa
   await expect(page.getByTestId("dashboard-page")).toBeVisible();
   await expect(page.getByTestId("onboarding-page")).toHaveCount(0);
 
+  // Simulate an expired access token while keeping the refresh credential. The SPA
+  // must transparently rotate the session and stay logged in after a full reload.
+  const cookies = await page.context().cookies();
+  expect(cookies.some((cookie) => cookie.name === "refresh_token")).toBeTruthy();
+  await page.context().clearCookies();
+  await page.context().addCookies(cookies.filter((cookie) => cookie.name !== "access_token"));
+  await page.reload();
+  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expect(page.getByTestId("bootstrap-error")).toHaveCount(0);
+
   await page.getByTestId("dashboard-to-commitments").click();
   await expect(page).toHaveURL(/\/compromissos$/);
   await expect(page.getByTestId("commitments-page")).toBeVisible();
