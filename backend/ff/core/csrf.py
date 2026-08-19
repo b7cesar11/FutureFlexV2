@@ -12,11 +12,13 @@ CSRF_COOKIE_NAME = "ff_csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
-# Login/registration accept JSON and are protected by the browser same-origin/CORS
-# boundary. Google OAuth has its own signed, browser-bound state validation.
+# Login/registration/refresh accept JSON and are protected by the browser same-origin/CORS
+# boundary. Refresh only rotates authentication credentials; it never mutates financial data.
+# Google OAuth has its own signed, browser-bound state validation.
 PUBLIC_UNSAFE_PATHS = frozenset({
     "/api/auth/login",
     "/api/auth/register",
+    "/api/auth/refresh",
     "/api/auth/google/session",
 })
 
