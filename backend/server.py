@@ -4,9 +4,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).parent
+REPO_ROOT = ROOT_DIR.parent
+FRONTEND_BUILD_DIR = REPO_ROOT / "frontend" / "build"
 load_dotenv(ROOT_DIR / ".env")
 
-from fastapi import APIRouter, FastAPI  # noqa: E402
+from fastapi import APIRouter, FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
 from starlette.middleware.cors import CORSMiddleware  # noqa: E402
 
 from ff.api import auth as auth_api  # noqa: E402
@@ -90,3 +93,32 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     client.close()
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    """Serve the production React build from the API host.
+
+    Keeping browser UI and API on the same origin avoids relying on third-party/cross-site
+    cookie behavior for authentication, which is especially important on mobile browsers.
+    API routes are registered before this fallback and unknown /api paths remain real 404s.
+    """
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Rota não encontrada")
+
+    build_root = FRONTEND_BUILD_DIR.resolve()
+    requested = (build_root / full_path).resolve() if full_path else build_root
+    if requested != build_root and build_root not in requested.parents:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    if requested.is_file():
+        return FileResponse(requested)
+
+    index = build_root / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+
+    raise HTTPException(
+        status_code=404,
+        detail="Frontend não está compilado neste ambiente",
+    )
