@@ -1,6 +1,7 @@
-# Future Flex V2 — free staging/personal deployment.
-# This default Blueprint intentionally contains only Render services that support
-# the Free instance type. It does NOT require the paid Render Cron Job.
+# Future Flex V2 — free personal deployment.
+# One Render web service serves both FastAPI and the compiled React app.
+# Keeping UI + API on the same origin makes HttpOnly-cookie auth reliable across
+# desktop/mobile browsers and removes the need for cross-site session cookies.
 # Optional paid backup cron configuration lives in render.with-backup.yaml.
 # MongoDB remains external because ACID transactions are mandatory.
 
@@ -9,14 +10,15 @@ services:
     name: futureflex-api
     runtime: python
     plan: free
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r backend/requirements.txt && cd frontend && yarn install --frozen-lockfile --non-interactive && REACT_APP_BACKEND_URL= yarn build
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     autoDeployTrigger: checksPass
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.15
+      - key: NODE_VERSION
+        value: 20.20.2
       - key: APP_ENV
         value: production
       - key: MONGO_URL
@@ -35,42 +37,14 @@ services:
         value: "false"
       - key: COOKIE_SECURE
         value: "true"
-      # Render free staging uses different onrender.com origins.
       - key: COOKIE_SAMESITE
-        value: none
+        value: lax
+      # The full-stack app itself is now the browser origin.
       - key: FRONTEND_URL
-        sync: false
+        value: https://futureflex-api.onrender.com
       - key: CORS_ORIGINS
-        sync: false
+        value: https://futureflex-api.onrender.com
       - key: AI_MODEL
         value: gpt-5.5
       - key: AI_DAILY_LIMIT
         value: "60"
-
-  - type: web
-    name: futureflex-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: yarn install --frozen-lockfile --non-interactive && yarn build
-    staticPublishPath: build
-    autoDeployTrigger: checksPass
-    envVars:
-      - key: NODE_VERSION
-        value: 20.20.2
-      # Set to the public URL of futureflex-api, without a trailing /api.
-      - key: REACT_APP_BACKEND_URL
-        sync: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: DENY
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
