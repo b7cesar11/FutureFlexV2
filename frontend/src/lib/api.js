@@ -11,10 +11,25 @@ export const http = axios.create({ baseURL: API, withCredentials: true, timeout:
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 let csrfToken = null;
+let refreshPromise = null;
 
 function captureCsrf(response) {
   const token = response?.headers?.["x-csrf-token"];
   if (typeof token === "string" && token) csrfToken = token;
+}
+
+function isRefreshableAuthFailure(error) {
+  if (error?.response?.status !== 401) return false;
+  const config = error.config || {};
+  if (config._ffRetriedAfterRefresh) return false;
+  const url = String(config.url || "");
+  return ![
+    "/auth/login",
+    "/auth/register",
+    "/auth/refresh",
+    "/auth/google/start",
+    "/auth/google/callback",
+  ].some((path) => url.startsWith(path));
 }
 
 http.interceptors.request.use((config) => {
@@ -31,10 +46,25 @@ http.interceptors.response.use(
     captureCsrf(response);
     return response;
   },
-  (error) => {
-    // A rejected CSRF request returns a fresh/valid token so the next user action can
-    // recover without exposing the HttpOnly cookie to JavaScript.
+  async (error) => {
     captureCsrf(error.response);
+
+    if (isRefreshableAuthFailure(error)) {
+      const original = error.config;
+      original._ffRetriedAfterRefresh = true;
+      try {
+        if (!refreshPromise) {
+          refreshPromise = http.post("/auth/refresh").finally(() => {
+            refreshPromise = null;
+          });
+        }
+        await refreshPromise;
+        return http.request(original);
+      } catch (refreshError) {
+        return Promise.reject(refreshError);
+      }
+    }
+
     if (!error.response && error.code === "ECONNABORTED") {
       error.message = "O servidor demorou para responder. Tente novamente.";
     } else if (!error.response) {
