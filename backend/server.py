@@ -16,6 +16,7 @@ from ff.api import auth as auth_api  # noqa: E402
 from ff.api import catalog as catalog_api  # noqa: E402
 from ff.api import engine as engine_api  # noqa: E402
 from ff.api import insights as insights_api  # noqa: E402
+from ff.api import third_parties as third_parties_api  # noqa: E402
 from ff.core.config import (CORS_ORIGINS, ENABLE_DEMO_USER, REQUIRE_REPLICA_SET,
                             validate_runtime_config)  # noqa: E402
 from ff.core.csrf import CSRF_HEADER_NAME, CSRFMiddleware  # noqa: E402
@@ -49,12 +50,11 @@ async def health():
 
 api_router.include_router(auth_api.router)
 api_router.include_router(engine_api.router)
+api_router.include_router(third_parties_api.router)
 api_router.include_router(insights_api.router)
 api_router.include_router(catalog_api.router)
 app.include_router(api_router)
 
-# Cookie-authenticated mutations must carry a signed, session-bound CSRF token.
-# This middleware is added before CORS so CORS remains the outer browser boundary.
 app.add_middleware(CSRFMiddleware)
 
 if CORS_ORIGINS:
@@ -97,12 +97,7 @@ async def on_shutdown():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_frontend(full_path: str):
-    """Serve the production React build from the API host.
-
-    Keeping browser UI and API on the same origin avoids relying on third-party/cross-site
-    cookie behavior for authentication, which is especially important on mobile browsers.
-    API routes are registered before this fallback and unknown /api paths remain real 404s.
-    """
+    """Serve the production React build from the API host."""
     if full_path == "api" or full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Rota não encontrada")
 
