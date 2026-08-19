@@ -170,37 +170,20 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
         run: yarn playwright test e2e/release-smoke.spec.js
       - name: Flexibility — accounts lifecycle
-        id: flex_accounts
-        continue-on-error: true
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
         run: yarn playwright test e2e/flexibility.spec.js --grep "accounts cannot"
       - name: Flexibility — people and third parties
-        id: flex_third_parties
-        continue-on-error: true
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
         run: yarn playwright test e2e/flexibility.spec.js --grep "people and unpaid"
       - name: Flexibility — cards and invoice editing
-        id: flex_cards
-        continue-on-error: true
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
         run: yarn playwright test e2e/flexibility.spec.js --grep "unused cards"
-      - name: Enforce flexibility scenarios
-        if: always()
-        env:
-          ACCOUNTS_RESULT: ${{ steps.flex_accounts.outcome }}
-          THIRD_PARTIES_RESULT: ${{ steps.flex_third_parties.outcome }}
-          CARDS_RESULT: ${{ steps.flex_cards.outcome }}
-        run: |
-          echo "accounts=$ACCOUNTS_RESULT third_parties=$THIRD_PARTIES_RESULT cards=$CARDS_RESULT"
-          test "$ACCOUNTS_RESULT" = "success"
-          test "$THIRD_PARTIES_RESULT" = "success"
-          test "$CARDS_RESULT" = "success"
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/futureflex-browser-backend.log || true
