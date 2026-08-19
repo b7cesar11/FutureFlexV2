@@ -1,9 +1,6 @@
 import axios from "axios";
 
 const configuredBase = (process.env.REACT_APP_BACKEND_URL || "").trim();
-
-// Same-origin is the safest production default when frontend and backend share a host.
-// For split deployments, set REACT_APP_BACKEND_URL explicitly (e.g. https://api.example.com).
 const BASE = configuredBase.replace(/\/$/, "");
 export const API = BASE ? `${BASE}/api` : "/api";
 
@@ -24,11 +21,7 @@ function isRefreshableAuthFailure(error) {
   if (config._ffRetriedAfterRefresh) return false;
   const url = String(config.url || "");
   return ![
-    "/auth/login",
-    "/auth/register",
-    "/auth/refresh",
-    "/auth/google/start",
-    "/auth/google/callback",
+    "/auth/login", "/auth/register", "/auth/refresh", "/auth/google/start", "/auth/google/callback",
   ].some((path) => url.startsWith(path));
 }
 
@@ -48,15 +41,12 @@ http.interceptors.response.use(
   },
   async (error) => {
     captureCsrf(error.response);
-
     if (isRefreshableAuthFailure(error)) {
       const original = error.config;
       original._ffRetriedAfterRefresh = true;
       try {
         if (!refreshPromise) {
-          refreshPromise = http.post("/auth/refresh").finally(() => {
-            refreshPromise = null;
-          });
+          refreshPromise = http.post("/auth/refresh").finally(() => { refreshPromise = null; });
         }
         await refreshPromise;
         return http.request(original);
@@ -64,10 +54,9 @@ http.interceptors.response.use(
         return Promise.reject(refreshError);
       }
     }
-
     if (!error.response && error.code === "ECONNABORTED") {
       error.message = "O servidor demorou para responder. Tente novamente.";
-    } else if (!error.response) {
+    } else if (!error.response && !error.message) {
       error.message = "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.";
     }
     return Promise.reject(error);
@@ -87,11 +76,11 @@ export function formatApiErrorDetail(detail) {
 }
 
 export function apiError(e) {
-  return formatApiErrorDetail(e?.response?.data?.detail) || e?.message;
+  const detail = e?.response?.data?.detail;
+  if (detail != null) return formatApiErrorDetail(detail);
+  return e?.message || "Algo deu errado. Tente novamente.";
 }
 
-// Accepts both Brazilian and dot-decimal notation without forcing the user to
-// change their keyboard habits: 123,45 / 123.45 / 1.234,56 / 1,234.56.
 export function parseMoneyInput(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
   let raw = String(value ?? "").trim();
@@ -102,11 +91,8 @@ export function parseMoneyInput(value) {
   const lastDot = raw.lastIndexOf(".");
 
   if (lastComma >= 0 && lastDot >= 0) {
-    if (lastComma > lastDot) {
-      raw = raw.replace(/\./g, "").replace(",", ".");
-    } else {
-      raw = raw.replace(/,/g, "");
-    }
+    if (lastComma > lastDot) raw = raw.replace(/\./g, "").replace(",", ".");
+    else raw = raw.replace(/,/g, "");
   } else if (lastComma >= 0) {
     raw = raw.replace(/\./g, "").replace(",", ".");
   }
@@ -116,9 +102,7 @@ export function parseMoneyInput(value) {
 }
 
 export const brl = (value) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-    Number(value || 0),
-  );
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
 
 export const MONTHS_PT = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -147,15 +131,9 @@ export function currentCompetence() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-// Financial due dates are calendar dates stored at UTC midnight. Rendering in the
-// browser's local timezone could shift them to the previous day in Brazil.
 export const formatDate = (value) =>
   value
-    ? new Date(value).toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        timeZone: "UTC",
-      })
+    ? new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })
     : "";
 
 export const STATUS_META = {
