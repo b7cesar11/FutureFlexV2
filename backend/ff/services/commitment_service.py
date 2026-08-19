@@ -4,21 +4,21 @@ Fluxo: Commitment -> Installments/Recurrence -> Occurrences -> Invoice (quando c
 """
 from datetime import date, datetime, timezone
 
+from bson import ObjectId
 from pymongo import UpdateOne
-from pymongo.errors import DuplicateKeyError
 
 from ..core.config import PROJECTION_WINDOW_MONTHS
 from ..core.db import db
 from ..core.deps import DomainError
 from ..domain import card_cycle, installments as inst_rules
-from ..domain.calendar_rules import (add_months, as_datetime, clamp_day, competence_of,
+from ..domain.calendar_rules import (add_months, as_datetime, competence_of,
                                      months_between, schedule_monthly, today_utc)
-from ..models.base import convert_ids, now_utc
+from ..domain.money import to_cents
+from ..models.base import now_utc
 from ..models.entities import Commitment, Occurrence, OccMeta, OccRefs, Recurrence
 from ..repositories import registry as repo
 from . import invoice_service
 from .authorization import assert_owned
-from bson import ObjectId
 
 KIND_BY_TYPE = {
     "purchase_installment": ("installment", "installments"),
@@ -70,7 +70,6 @@ async def create_commitment(user_id: str, payload: dict, session=None,
         installment_amount = parts[0]
     else:
         installment_amount = total
-        parts = None
 
     recurrence = None
     if not count:
@@ -252,6 +251,58 @@ async def cancel(user_id: str, commitment_id: str, session=None) -> dict:
     for invoice_id in {o.refs.invoice_id for o in affected if o.refs.invoice_id}:
         await invoice_service.recalculate(user_id, invoice_id, session=session)
     return {"commitment_id": commitment_id, "cancelled_occurrences": result.modified_count}
+
+
+async def delete_mistake(user_id: str, commitment_id: str, session=None) -> dict:
+    """Remove um cadastro manual feito por engano, somente antes de qualquer realização.
+
+    Histórico financeiro liquidado nunca é apagado. Compromissos gerados por módulos
+    relacionais (assinaturas/terceiros) também não podem ser removidos isoladamente.
+    """
+    commitment = await repo.commitments.get(user_id, commitment_id, session=session)
+    if not commitment:
+        raise DomainError("Compromisso não encontrado", 404)
+
+    source_module = (commitment.source or {}).get("module") or "manual"
+    if source_module != "manual":
+        raise DomainError(
+            "Este compromisso foi criado por outro módulo e não pode ser excluído isoladamente.",
+            409,
+        )
+    if commitment.linked_commitment_id:
+        raise DomainError(
+            "Este compromisso possui um vínculo financeiro e não pode ser excluído isoladamente.",
+            409,
+        )
+
+    occurrences = await repo.occurrences.find(
+        user_id, {"commitment_id": commitment_id}, session=session
+    )
+    if any(
+        o.state == "paid"
+        or to_cents(o.paid_amount) > 0
+        or bool(o.refs.transaction_ids)
+        for o in occurrences
+    ):
+        raise DomainError(
+            "Este compromisso já possui pagamento ou movimentação. O histórico financeiro deve ser preservado.",
+            409,
+        )
+
+    invoice_ids = {o.refs.invoice_id for o in occurrences if o.refs.invoice_id}
+    deleted = await repo.occurrences.delete_many(
+        user_id, {"commitment_id": commitment_id}, session=session
+    )
+    await repo.commitments.delete(user_id, commitment_id, session=session)
+
+    for invoice_id in invoice_ids:
+        await invoice_service.recalculate(user_id, invoice_id, session=session)
+
+    return {
+        "commitment_id": commitment_id,
+        "deleted": True,
+        "deleted_occurrences": deleted.deleted_count,
+    }
 
 
 async def materialize_all(user_id: str, session=None) -> dict:
