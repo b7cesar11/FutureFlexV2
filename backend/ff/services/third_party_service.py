@@ -3,6 +3,8 @@
 Registros ainda não realizados podem ser corrigidos ou removidos. Depois que existe
 pagamento (inclusive pagamento parcial da fatura relacionada), o histórico fica protegido.
 """
+from datetime import datetime, timezone
+
 from ..core.deps import DomainError
 from ..domain.money import money
 from ..models.base import now_utc
@@ -10,6 +12,21 @@ from ..models.entities import ThirdPartyRelationship
 from ..repositories import registry as repo
 from . import commitment_service, invoice_service
 from .authorization import assert_owned
+
+
+def _parse_date(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            raise DomainError("Data inválida.", 422) from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _validated(payload: dict, *, partial: bool = False) -> dict:
@@ -39,6 +56,8 @@ def _validated(payload: dict, *, partial: bool = False) -> dict:
         if installments < 1 or installments > 360:
             raise DomainError("Número de parcelas deve estar entre 1 e 360.", 422)
         out["installments"] = installments
+    if "start_date" in out:
+        out["start_date"] = _parse_date(out.get("start_date"))
     return out
 
 
