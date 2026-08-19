@@ -69,6 +69,15 @@ async function goToCommitments(page) {
   await expect(page.getByTestId("commitments-page")).toBeVisible();
 }
 
+async function goToTransactions(page) {
+  if (await page.getByTestId("nav-transactions-desktop").isVisible().catch(() => false)) {
+    await page.getByTestId("nav-transactions-desktop").click();
+  } else {
+    await page.getByTestId("nav-transactions-mobile").click();
+  }
+  await expect(page.getByTestId("transactions-page")).toBeVisible();
+}
+
 async function goToCards(page) {
   if (await page.getByTestId("nav-cards-desktop").isVisible().catch(() => false)) {
     await page.getByTestId("nav-cards-desktop").click();
@@ -124,14 +133,14 @@ test("new user can register, onboard, reload and reach commitments", async ({ pa
   expect(serverErrors).toEqual([]);
 });
 
-test("account commitment does not debit until payment and payment updates the month", async ({ page }) => {
+test("account commitment accepts comma cents, payment works and paid history cannot be erased", async ({ page }) => {
   const serverErrors = watchServerErrors(page);
   await registerAndOnboard(page, { balance: 2500 });
 
   await openQuickAdd(page);
   await page.getByTestId("quick-add-type-fixed_expense").click();
   await page.getByTestId("quick-add-description").fill("Energia QA");
-  await page.getByTestId("quick-add-amount").fill("300");
+  await page.getByTestId("quick-add-amount").fill("300,45");
   await page.getByTestId("quick-add-day").fill("28");
   await selectOptionContaining(page.getByTestId("quick-add-account"), "Conta QA");
   await page.getByTestId("quick-add-submit").click();
@@ -141,8 +150,8 @@ test("account commitment does not debit until payment and payment updates the mo
   expect(await currentBalance(page)).toBeCloseTo(2500, 2);
 
   await goToCommitments(page);
-  await expect(page.getByTestId("month-committed")).toContainText("300");
-  await expect(page.getByTestId("month-pending")).toContainText("300");
+  await expect(page.getByTestId("month-committed")).toContainText("300,45");
+  await expect(page.getByTestId("month-pending")).toContainText("300,45");
 
   const row = page
     .getByText("Energia QA", { exact: true })
@@ -155,10 +164,90 @@ test("account commitment does not debit until payment and payment updates the mo
   await page.getByTestId("pay-confirm-btn").click();
   await expect(page.getByTestId("pay-dialog")).toHaveCount(0);
 
-  await expect(page.getByTestId("month-paid")).toContainText("300");
+  await expect(page.getByTestId("month-paid")).toContainText("300,45");
   await expect(page.getByTestId("month-pending")).toContainText("0,00");
-  expect(await currentBalance(page)).toBeCloseTo(2200, 2);
+  expect(await currentBalance(page)).toBeCloseTo(2199.55, 2);
   await expect(row.getByRole("button", { name: "Pagar" })).toHaveCount(0);
+
+  // A paid commitment is historical truth and cannot be hard-deleted as a mistake.
+  await row.getByRole("button", { name: /Energia QA/ }).click();
+  await expect(page.getByTestId("commitment-detail")).toBeVisible();
+  await page.getByTestId("detail-delete-btn").click();
+  await page.getByTestId("detail-delete-confirm-btn").click();
+  await expect(
+    page.getByText("Este compromisso já possui pagamento ou movimentação. O histórico financeiro deve ser preservado."),
+  ).toBeVisible();
+  await expect(page.getByTestId("commitment-detail")).toBeVisible();
+
+  expect(serverErrors).toEqual([]);
+});
+
+test("debt supports first due date and mistaken unpaid registration can be deleted", async ({ page }) => {
+  const serverErrors = watchServerErrors(page);
+  await registerAndOnboard(page, { balance: 2500 });
+
+  const dueDate = new Date().toISOString().slice(0, 10);
+  const [, month, day] = dueDate.split("-");
+
+  await openQuickAdd(page);
+  await page.getByTestId("quick-add-type-loan").click();
+  await page.getByTestId("quick-add-description").fill("Dívida vencimento QA");
+  await page.getByTestId("quick-add-amount").fill("750,35");
+  await page.getByTestId("quick-add-installments").fill("1");
+  await page.getByTestId("quick-add-due-date").fill(dueDate);
+  await selectOptionContaining(page.getByTestId("quick-add-account"), "Conta QA");
+  await page.getByTestId("quick-add-submit").click();
+  await expect(page.getByTestId("quick-add-drawer")).toHaveCount(0);
+
+  expect(await currentBalance(page)).toBeCloseTo(2500, 2);
+
+  await goToCommitments(page);
+  const row = page
+    .getByText("Dívida vencimento QA · 1/1", { exact: true })
+    .locator("xpath=ancestor::div[starts-with(@data-testid, 'occurrence-')][1]");
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(`vence ${day}/${month}`);
+  await expect(row).toContainText("750,35");
+
+  await row.getByRole("button", { name: /Dívida vencimento QA/ }).click();
+  await expect(page.getByTestId("commitment-detail")).toBeVisible();
+  await page.getByTestId("detail-delete-btn").click();
+  await expect(page.getByTestId("detail-delete-confirm")).toBeVisible();
+  await page.getByTestId("detail-delete-confirm-btn").click();
+  await expect(page.getByTestId("commitment-detail")).toHaveCount(0);
+  await expect(page.getByText("Dívida vencimento QA · 1/1", { exact: true })).toHaveCount(0);
+
+  const commitments = await apiJson(page, "/commitments");
+  expect(commitments.some((item) => item.description === "Dívida vencimento QA")).toBeFalsy();
+  expect(await currentBalance(page)).toBeCloseTo(2500, 2);
+
+  expect(serverErrors).toEqual([]);
+});
+
+test("mistaken manual transaction can be deleted and its balance effect is reversed", async ({ page }) => {
+  const serverErrors = watchServerErrors(page);
+  await registerAndOnboard(page, { balance: 1000 });
+
+  await openQuickAdd(page);
+  await page.getByTestId("quick-add-type-expense").click();
+  await page.getByTestId("quick-add-description").fill("Gasto errado QA");
+  await page.getByTestId("quick-add-amount").fill("12,34");
+  await selectOptionContaining(page.getByTestId("quick-add-account"), "Conta QA");
+  await page.getByTestId("quick-add-submit").click();
+  await expect(page.getByTestId("quick-add-drawer")).toHaveCount(0);
+  expect(await currentBalance(page)).toBeCloseTo(987.66, 2);
+
+  await goToTransactions(page);
+  const row = page
+    .getByText("Gasto errado QA", { exact: true })
+    .locator("xpath=ancestor::div[starts-with(@data-testid, 'transaction-')][1]");
+  await expect(row).toBeVisible();
+  await row.getByTitle("Excluir lançamento feito por engano").click();
+  await expect(page.getByTestId("transaction-delete-dialog")).toBeVisible();
+  await page.getByTestId("transaction-delete-confirm").click();
+  await expect(page.getByTestId("transaction-delete-dialog")).toHaveCount(0);
+  await expect(page.getByText("Gasto errado QA", { exact: true })).toHaveCount(0);
+  expect(await currentBalance(page)).toBeCloseTo(1000, 2);
 
   expect(serverErrors).toEqual([]);
 });
@@ -170,7 +259,7 @@ test("card purchase composes invoice without double counting and only invoice pa
   await goToCards(page);
   await page.getByTestId("new-card-btn").click();
   await page.getByTestId("card-name").fill("Cartão QA");
-  await page.getByTestId("card-limit").fill("10000");
+  await page.getByTestId("card-limit").fill("10000,50");
   await page.getByTestId("card-closing-day").fill("28");
   await page.getByTestId("card-due-day").fill("5");
   await page.getByTestId("card-save").click();
@@ -179,7 +268,7 @@ test("card purchase composes invoice without double counting and only invoice pa
   await openQuickAdd(page);
   await page.getByTestId("quick-add-type-purchase_installment").click();
   await page.getByTestId("quick-add-description").fill("Notebook QA");
-  await page.getByTestId("quick-add-amount").fill("600");
+  await page.getByTestId("quick-add-amount").fill("600,30");
   await page.getByTestId("quick-add-installments").fill("2");
   await selectOptionContaining(page.getByTestId("quick-add-card"), "Cartão QA");
   await page.getByTestId("quick-add-submit").click();
@@ -198,16 +287,16 @@ test("card purchase composes invoice without double counting and only invoice pa
 
   invoices.sort((a, b) => a.competence.localeCompare(b.competence));
   const invoice = invoices[0];
-  const month = await apiJson(page, `/months/${invoice.competence}`);
-  const cardsGroup = month.groups.find((group) => group.key === "cards");
-  const installmentsGroup = month.groups.find((group) => group.key === "installments");
+  const monthView = await apiJson(page, `/months/${invoice.competence}`);
+  const cardsGroup = monthView.groups.find((group) => group.key === "cards");
+  const installmentsGroup = monthView.groups.find((group) => group.key === "installments");
   const cardChild = installmentsGroup?.items.find((item) => item.label.includes("Notebook QA"));
 
   expect(cardsGroup, "card invoice group should exist").toBeTruthy();
   expect(cardChild, "installment occurrence should be present as invoice composition").toBeTruthy();
   expect(cardChild.counts_in_total).toBeFalsy();
   expect(Number(cardsGroup.total)).toBeCloseTo(Number(invoice.total), 2);
-  expect(Number(month.committed)).toBeCloseTo(Number(invoice.total), 2);
+  expect(Number(monthView.committed)).toBeCloseTo(Number(invoice.total), 2);
 
   await goToCards(page);
   await expect(page.getByTestId(`invoice-${invoice.id}`)).toBeVisible();
