@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CreditCard as CardIcon, Plus } from "lucide-react";
-import { apiError, brl, formatDate, http, shortCompetence, STATUS_META } from "@/lib/api";
+import { apiError, brl, formatDate, http, parseMoneyInput, shortCompetence, STATUS_META } from "@/lib/api";
 import { EmptyState, PageHeader, Skeleton, StatusBadge } from "@/components/ui-kit/Primitives";
 import { PayDialog } from "@/components/PayDialog";
 
@@ -31,13 +31,16 @@ export default function Cards() {
   });
 
   const create = useMutation({
-    mutationFn: async () =>
-      http.post("/credit-cards", {
+    mutationFn: async () => {
+      const limit = form.limit ? parseMoneyInput(form.limit) : 0;
+      if (!Number.isFinite(limit) || limit < 0) throw new Error("Informe um limite válido");
+      return http.post("/credit-cards", {
         name: form.name,
-        limit: Number(form.limit || 0),
+        limit,
         closing_day: Number(form.closing_day),
         due_day: Number(form.due_day),
-      }),
+      });
+    },
     onSuccess: () => {
       toast.success("Cartão criado");
       queryClient.invalidateQueries({ queryKey: ["credit-cards"] });
@@ -74,7 +77,8 @@ export default function Cards() {
           />
           <input
             className={`${field} num`}
-            placeholder="Limite"
+            placeholder="Limite (ex.: 5000,00)"
+            inputMode="decimal"
             data-testid="card-limit"
             value={form.limit}
             onChange={(e) => setForm({ ...form, limit: e.target.value })}
