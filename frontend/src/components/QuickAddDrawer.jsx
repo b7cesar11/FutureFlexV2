@@ -33,7 +33,7 @@ export const QuickAddDrawer = ({ open, onClose }) => {
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const needsInstallments = ["purchase_installment", "loan", "financing"].includes(type);
   const needsRecurrenceDay = ["fixed_expense", "subscription", "recurring_income"].includes(type);
-  const needsScheduleDate = needsInstallments || type === "third_party";
+  const needsScheduleDate = (needsInstallments && !form.credit_card_id) || type === "third_party";
   const isCommitment = !["expense", "income", "transfer"].includes(type);
 
   const mutation = useMutation({
@@ -76,7 +76,7 @@ export const QuickAddDrawer = ({ open, onClose }) => {
       const payload = { type, description: form.description, total_amount: amount, category_id: form.category_id || null };
       if (needsInstallments) {
         payload.installments_total = Number(form.installments || 1);
-        payload.start_date = form.start_date;
+        if (form.start_date) payload.start_date = form.start_date;
       }
       if (form.credit_card_id) {
         payload.payment_method = "credit_card";
