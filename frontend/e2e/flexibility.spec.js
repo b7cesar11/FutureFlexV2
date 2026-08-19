@@ -228,6 +228,9 @@ test("unused cards can be edited/deleted and invoice values are corrected throug
   invoices = await apiJson(page, "/invoices");
   expect(Number(invoices.find((item) => item.id === invoice.id).total)).toBeCloseTo(333.33, 2);
 
+  // Navigation should happen after closing the modal; clicking through a modal is not a valid user flow.
+  await page.getByTestId("invoice-detail-close").click();
+  await expect(page.getByTestId("invoice-detail")).toHaveCount(0);
   await goCommitments(page);
   const invoiceRow = page.getByText("Fatura Cartão Fatura QA", { exact: true })
     .locator("xpath=ancestor::div[starts-with(@data-testid, 'occurrence-')][1]");
