@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Wallet } from "lucide-react";
-import { apiError, brl, http } from "@/lib/api";
+import { apiError, brl, http, parseMoneyInput } from "@/lib/api";
 import { EmptyState, Metric, PageHeader, Skeleton } from "@/components/ui-kit/Primitives";
 
 const field =
@@ -23,12 +23,15 @@ export default function Accounts() {
   });
 
   const create = useMutation({
-    mutationFn: async () =>
-      http.post("/accounts", {
+    mutationFn: async () => {
+      const parsedBalance = form.opening_balance ? parseMoneyInput(form.opening_balance) : 0;
+      if (!Number.isFinite(parsedBalance)) throw new Error("Informe um saldo inicial válido");
+      return http.post("/accounts", {
         name: form.name,
         type: form.type,
-        opening_balance: Number(form.opening_balance || 0),
-      }),
+        opening_balance: parsedBalance,
+      });
+    },
     onSuccess: () => {
       toast.success("Conta criada");
       queryClient.invalidateQueries();
@@ -89,7 +92,8 @@ export default function Accounts() {
           </select>
           <input
             className={`${field} num`}
-            placeholder="Saldo inicial"
+            placeholder="Saldo inicial (ex.: 1234,56)"
+            inputMode="decimal"
             data-testid="account-balance"
             value={form.opening_balance}
             onChange={(e) => setForm({ ...form, opening_balance: e.target.value })}
