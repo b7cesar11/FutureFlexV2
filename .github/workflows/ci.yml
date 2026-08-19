@@ -29,69 +29,49 @@ jobs:
       CORS_ORIGINS: ""
       REACT_APP_BACKEND_URL: http://127.0.0.1:8001
       OPENAI_API_KEY: ""
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Start MongoDB replica set
         run: |
-          docker run -d --name futureflex-mongo -p 27017:27017 mongo:7 \
-            mongod --replSet rs0 --bind_ip_all
+          docker run -d --name futureflex-mongo -p 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
           for i in {1..30}; do
-            if docker exec futureflex-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec futureflex-mongo mongosh --quiet --eval \
-            'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          docker exec futureflex-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
           for i in {1..30}; do
-            if docker exec futureflex-mongo mongosh --quiet --eval \
-              'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then break; fi
             sleep 2
           done
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: backend/requirements.txt
-
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
-
       - name: Compile backend
         run: python -m compileall -q backend/ff backend/server.py
-
       - name: Start backend
         working-directory: backend
         run: |
           nohup python -m uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/futureflex-backend.log 2>&1 &
           echo $! > /tmp/futureflex-backend.pid
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null; then
-              exit 0
-            fi
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null; then exit 0; fi
             sleep 2
           done
           cat /tmp/futureflex-backend.log
           exit 1
-
       - name: Release security and deploy guards
         run: python -m pytest tests/test_release_security.py tests/test_deploy_config.py -v
-
       - name: Core financial rules
         run: python -m pytest tests/test_business_rules.py -v
-
       - name: Dynamic amounts regression
         run: python -m pytest tests/test_dynamic_amounts.py -v
-
       - name: Backend E2E regression
         run: python -m pytest backend/tests/backend_test.py -v
-
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/futureflex-backend.log || true
@@ -102,20 +82,16 @@ jobs:
     defaults:
       run:
         working-directory: frontend
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
-
       - name: Install frontend dependencies
         run: yarn install --frozen-lockfile --non-interactive
-
       - name: Build frontend
         env:
           CI: "false"
@@ -124,7 +100,7 @@ jobs:
 
   frontend-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       APP_ENV: test
       MONGO_URL: mongodb://127.0.0.1:27017/?replicaSet=rs0
@@ -138,81 +114,93 @@ jobs:
       FRONTEND_URL: http://127.0.0.1:8001
       CORS_ORIGINS: http://127.0.0.1:8001
       OPENAI_API_KEY: ""
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Start MongoDB replica set
         run: |
-          docker run -d --name futureflex-browser-mongo -p 27017:27017 mongo:7 \
-            mongod --replSet rs0 --bind_ip_all
+          docker run -d --name futureflex-browser-mongo -p 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
           for i in {1..30}; do
-            if docker exec futureflex-browser-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-browser-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec futureflex-browser-mongo mongosh --quiet --eval \
-            'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          docker exec futureflex-browser-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
           for i in {1..30}; do
-            if docker exec futureflex-browser-mongo mongosh --quiet --eval \
-              'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-browser-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then break; fi
             sleep 2
           done
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: backend/requirements.txt
-
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: yarn install --frozen-lockfile --non-interactive
-
       - name: Build same-origin frontend
         working-directory: frontend
         env:
           CI: "false"
           REACT_APP_BACKEND_URL: ""
         run: yarn build
-
       - name: Start full-stack server
         working-directory: backend
         run: |
           nohup python -m uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/futureflex-browser-backend.log 2>&1 &
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null && curl -fsS http://127.0.0.1:8001/ >/dev/null; then
-              exit 0
-            fi
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null && curl -fsS http://127.0.0.1:8001/ >/dev/null; then exit 0; fi
             sleep 2
           done
           cat /tmp/futureflex-browser-backend.log
           exit 1
-
       - name: Install Chromium
         working-directory: frontend
         run: yarn playwright install --with-deps chromium
-
-      - name: Browser release smoke (same origin)
+      - name: Existing browser release smoke
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
-        run: yarn test:e2e
-
+        run: yarn playwright test e2e/release-smoke.spec.js
+      - name: Flexibility — accounts lifecycle
+        id: flex_accounts
+        continue-on-error: true
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/flexibility.spec.js --grep "accounts cannot"
+      - name: Flexibility — people and third parties
+        id: flex_third_parties
+        continue-on-error: true
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/flexibility.spec.js --grep "people and unpaid"
+      - name: Flexibility — cards and invoice editing
+        id: flex_cards
+        continue-on-error: true
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/flexibility.spec.js --grep "unused cards"
+      - name: Enforce flexibility scenarios
+        if: always()
+        env:
+          ACCOUNTS_RESULT: ${{ steps.flex_accounts.outcome }}
+          THIRD_PARTIES_RESULT: ${{ steps.flex_third_parties.outcome }}
+          CARDS_RESULT: ${{ steps.flex_cards.outcome }}
+        run: |
+          echo "accounts=$ACCOUNTS_RESULT third_parties=$THIRD_PARTIES_RESULT cards=$CARDS_RESULT"
+          test "$ACCOUNTS_RESULT" = "success"
+          test "$THIRD_PARTIES_RESULT" = "success"
+          test "$CARDS_RESULT" = "success"
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/futureflex-browser-backend.log || true
@@ -230,112 +218,48 @@ jobs:
       AWS_SECRET_ACCESS_KEY: futureflex-ci-secret
       AWS_DEFAULT_REGION: us-east-1
       BACKUP_ENCRYPTION_PASSPHRASE: ci-backup-passphrase-only
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Start MongoDB replica set and seed source data
         run: |
-          docker run -d --name futureflex-backup-mongo -p 27017:27017 mongo:7 \
-            mongod --replSet rs0 --bind_ip_all
+          docker run -d --name futureflex-backup-mongo -p 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
           for i in {1..30}; do
-            if docker exec futureflex-backup-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-backup-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec futureflex-backup-mongo mongosh --quiet --eval \
-            'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          docker exec futureflex-backup-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
           for i in {1..30}; do
-            if docker exec futureflex-backup-mongo mongosh --quiet --eval \
-              'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
-              break
-            fi
+            if docker exec futureflex-backup-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval \
-            'db.getSiblingDB("futureflex_backup_ci").probe.insertOne({marker:"backup-smoke", amount:123.45})'
-
+          docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval 'db.getSiblingDB("futureflex_backup_ci").probe.insertOne({marker:"backup-smoke", amount:123.45})'
       - name: Start S3-compatible object storage
         run: |
-          docker run -d --name futureflex-minio -p 9000:9000 \
-            -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" \
-            -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" \
-            minio/minio:latest server /data --address :9000
+          docker run -d --name futureflex-minio -p 9000:9000 -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" minio/minio:latest server /data --address :9000
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then
-              exit 0
-            fi
+            if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then exit 0; fi
             sleep 2
           done
           docker logs futureflex-minio
           exit 1
-
       - name: Build backup image
         run: docker build -f ops/backup/Dockerfile -t futureflex-backup .
-
       - name: Create backup bucket
         run: |
-          docker run --rm --network host \
-            --entrypoint aws \
-            -e AWS_ACCESS_KEY_ID \
-            -e AWS_SECRET_ACCESS_KEY \
-            -e AWS_DEFAULT_REGION \
-            futureflex-backup \
-            s3api create-bucket --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket "$BACKUP_BUCKET"
-
+          docker run --rm --network host --entrypoint aws -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION futureflex-backup s3api create-bucket --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket "$BACKUP_BUCKET"
       - name: Create encrypted off-site backup
         run: |
-          docker run --rm --network host \
-            -e BACKUP_MONGO_URL="$MONGO_URL" \
-            -e BACKUP_DB_NAME \
-            -e BACKUP_BUCKET \
-            -e BACKUP_S3_ENDPOINT \
-            -e AWS_ACCESS_KEY_ID \
-            -e AWS_SECRET_ACCESS_KEY \
-            -e AWS_DEFAULT_REGION \
-            -e BACKUP_ENCRYPTION_PASSPHRASE \
-            -e BACKUP_RETENTION_DAILY=14 \
-            -e BACKUP_RETENTION_WEEKLY=8 \
-            -e BACKUP_RETENTION_MONTHLY=12 \
-            futureflex-backup
-
+          docker run --rm --network host -e BACKUP_MONGO_URL="$MONGO_URL" -e BACKUP_DB_NAME -e BACKUP_BUCKET -e BACKUP_S3_ENDPOINT -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e BACKUP_ENCRYPTION_PASSPHRASE -e BACKUP_RETENTION_DAILY=14 -e BACKUP_RETENTION_WEEKLY=8 -e BACKUP_RETENTION_MONTHLY=12 futureflex-backup
       - name: Resolve uploaded backup object
         run: |
-          OBJECT_KEY="$(docker run --rm --network host \
-            --entrypoint aws \
-            -e AWS_ACCESS_KEY_ID \
-            -e AWS_SECRET_ACCESS_KEY \
-            -e AWS_DEFAULT_REGION \
-            futureflex-backup \
-            s3api list-objects-v2 \
-              --endpoint-url "$BACKUP_S3_ENDPOINT" \
-              --bucket "$BACKUP_BUCKET" \
-              --prefix futureflex/daily/ \
-              --query 'Contents[0].Key' \
-              --output text)"
+          OBJECT_KEY="$(docker run --rm --network host --entrypoint aws -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION futureflex-backup s3api list-objects-v2 --endpoint-url "$BACKUP_S3_ENDPOINT" --bucket "$BACKUP_BUCKET" --prefix futureflex/daily/ --query 'Contents[0].Key' --output text)"
           test -n "$OBJECT_KEY"
           test "$OBJECT_KEY" != "None"
           echo "BACKUP_OBJECT_KEY=$OBJECT_KEY" >> "$GITHUB_ENV"
-
       - name: Restore backup into an isolated database
         run: |
-          docker run --rm --network host \
-            --entrypoint /usr/local/bin/futureflex-restore \
-            -e BACKUP_BUCKET \
-            -e BACKUP_S3_ENDPOINT \
-            -e AWS_ACCESS_KEY_ID \
-            -e AWS_SECRET_ACCESS_KEY \
-            -e AWS_DEFAULT_REGION \
-            -e BACKUP_ENCRYPTION_PASSPHRASE \
-            -e BACKUP_OBJECT_KEY \
-            -e BACKUP_DB_NAME \
-            -e RESTORE_MONGO_URL="$MONGO_URL" \
-            -e RESTORE_DB_NAME \
-            futureflex-backup
-
+          docker run --rm --network host --entrypoint /usr/local/bin/futureflex-restore -e BACKUP_BUCKET -e BACKUP_S3_ENDPOINT -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e BACKUP_ENCRYPTION_PASSPHRASE -e BACKUP_OBJECT_KEY -e BACKUP_DB_NAME -e RESTORE_MONGO_URL="$MONGO_URL" -e RESTORE_DB_NAME futureflex-backup
       - name: Verify restored data
         run: |
-          COUNT="$(docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval \
-            'db.getSiblingDB("futureflex_restore_ci").probe.countDocuments({marker:"backup-smoke", amount:123.45})')"
+          COUNT="$(docker exec futureflex-backup-mongo mongosh --quiet "$MONGO_URL" --eval 'db.getSiblingDB("futureflex_restore_ci").probe.countDocuments({marker:"backup-smoke", amount:123.45})')"
           test "$COUNT" = "1"
