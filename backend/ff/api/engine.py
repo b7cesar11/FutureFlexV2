@@ -100,8 +100,19 @@ async def unfreeze(commitment_id: str, user_id: str = Depends(current_user_id)):
 
 @router.delete("/commitments/{commitment_id}")
 async def cancel_commitment(commitment_id: str, user_id: str = Depends(current_user_id)):
+    """Cancela ocorrências futuras preservando histórico. Mantido por compatibilidade."""
     async with UnitOfWork() as uow:
         return await commitment_service.cancel(user_id, commitment_id, session=uow.session)
+
+
+@router.delete("/commitments/{commitment_id}/mistake")
+async def delete_mistaken_commitment(commitment_id: str,
+                                     user_id: str = Depends(current_user_id)):
+    """Remove definitivamente somente um cadastro manual ainda sem realização financeira."""
+    async with UnitOfWork() as uow:
+        return await commitment_service.delete_mistake(
+            user_id, commitment_id, session=uow.session
+        )
 
 
 @router.post("/commitments/materialize")
@@ -225,6 +236,14 @@ async def create_transaction(payload: dict,
     async with UnitOfWork() as uow:
         return await payment_service.create_transaction(user_id, payload, idempotency_key,
                                                         session=uow.session)
+
+
+@router.delete("/transactions/{transaction_id}")
+async def delete_transaction(transaction_id: str, user_id: str = Depends(current_user_id)):
+    async with UnitOfWork() as uow:
+        return await payment_service.delete_manual_transaction(
+            user_id, transaction_id, session=uow.session
+        )
 
 
 # ------------------------------------------------------------------ terceiros
