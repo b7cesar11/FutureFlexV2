@@ -90,6 +90,31 @@ export function apiError(e) {
   return formatApiErrorDetail(e?.response?.data?.detail) || e?.message;
 }
 
+// Accepts both Brazilian and dot-decimal notation without forcing the user to
+// change their keyboard habits: 123,45 / 123.45 / 1.234,56 / 1,234.56.
+export function parseMoneyInput(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  let raw = String(value ?? "").trim();
+  if (!raw) return NaN;
+
+  raw = raw.replace(/R\$/gi, "").replace(/\s+/g, "").replace(/[^0-9,.-]/g, "");
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      raw = raw.replace(/\./g, "").replace(",", ".");
+    } else {
+      raw = raw.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    raw = raw.replace(/\./g, "").replace(",", ".");
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 export const brl = (value) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
     Number(value || 0),
@@ -122,8 +147,16 @@ export function currentCompetence() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// Financial due dates are calendar dates stored at UTC midnight. Rendering in the
+// browser's local timezone could shift them to the previous day in Brazil.
 export const formatDate = (value) =>
-  value ? new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+  value
+    ? new Date(value).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        timeZone: "UTC",
+      })
+    : "";
 
 export const STATUS_META = {
   future: { label: "Previsto", className: "text-zinc-400 border-white/20 border-dashed" },
