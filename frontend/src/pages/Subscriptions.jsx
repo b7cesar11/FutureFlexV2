@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   ArrowUpRight, Ban, Pencil, Play, Plus, Snowflake, TrendingUp, X,
 } from "lucide-react";
-import { apiError, brl, formatDate, http, shortCompetence } from "@/lib/api";
+import { apiError, brl, formatDate, http, parseMoneyInput, shortCompetence } from "@/lib/api";
 import { EmptyState, Metric, PageHeader, Skeleton } from "@/components/ui-kit/Primitives";
 import { CommitmentDetailDrawer } from "@/components/CommitmentDetailDrawer";
 
@@ -53,9 +53,11 @@ export default function Subscriptions() {
 
   const save = useMutation({
     mutationFn: async () => {
+      const amount = parseMoneyInput(form.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Informe um valor válido");
       const body = {
         name: form.name,
-        amount: Number(form.amount),
+        amount,
         periodicity: form.periodicity,
         billing_day: Number(form.billing_day || 1),
         category_id: form.category_id || null,
@@ -197,7 +199,8 @@ export default function Subscriptions() {
           />
           <input
             className={`${field} num`}
-            placeholder="Valor"
+            placeholder="Valor (ex.: 55,90)"
+            inputMode="decimal"
             data-testid="subscription-amount"
             value={form.amount}
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
