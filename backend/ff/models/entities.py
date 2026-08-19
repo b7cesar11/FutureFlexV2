@@ -1,24 +1,17 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
-
 from pydantic import BaseModel, Field
-
 from .base import BaseDocument, PyObjectId
-
-# ---------------------------------------------------------------- usuario / cadastros
-
 
 class UserProfile(BaseModel):
     name: str = ""
     picture: Optional[str] = None
-
 
 class UserPreferences(BaseModel):
     currency: str = "BRL"
     locale: str = "pt-BR"
     theme: str = "dark"
     projection_months: int = 24
-
 
 class User(BaseDocument):
     email: str
@@ -29,7 +22,6 @@ class User(BaseDocument):
     profile: UserProfile = Field(default_factory=UserProfile)
     preferences: UserPreferences = Field(default_factory=UserPreferences)
 
-
 class Account(BaseDocument):
     user_id: PyObjectId
     name: str
@@ -39,7 +31,6 @@ class Account(BaseDocument):
     current_balance: float = 0.0
     color: str = "#22D3A5"
     archived: bool = False
-
 
 class CreditCard(BaseDocument):
     user_id: PyObjectId
@@ -52,7 +43,6 @@ class CreditCard(BaseDocument):
     color: str = "#8B5CF6"
     archived: bool = False
 
-
 class Category(BaseDocument):
     user_id: PyObjectId
     name: str
@@ -61,7 +51,6 @@ class Category(BaseDocument):
     color: str = "#94A3B8"
     is_system: bool = False
 
-
 class Person(BaseDocument):
     user_id: PyObjectId
     name: str
@@ -69,15 +58,11 @@ class Person(BaseDocument):
     notes: Optional[str] = None
     color: str = "#F59E0B"
 
-
-# ---------------------------------------------------------------- motor financeiro
-
 CommitmentType = Literal[
     "purchase_installment", "fixed_expense", "subscription", "loan", "financing",
     "credit_card_invoice", "third_party_payable", "third_party_receivable",
     "recurring_income", "other",
 ]
-
 
 class Recurrence(BaseModel):
     frequency: Literal["once", "monthly", "weekly", "yearly"] = "monthly"
@@ -85,7 +70,6 @@ class Recurrence(BaseModel):
     day_of_month: int = 1
     start_competence: str = ""
     end_competence: Optional[str] = None
-
 
 class Commitment(BaseDocument):
     user_id: PyObjectId
@@ -111,7 +95,6 @@ class Commitment(BaseDocument):
     materialized_until: Optional[str] = None
     start_date: Optional[datetime] = None
 
-
 class OccRefs(BaseModel):
     invoice_id: Optional[PyObjectId] = None
     credit_card_id: Optional[PyObjectId] = None
@@ -120,7 +103,6 @@ class OccRefs(BaseModel):
     person_id: Optional[PyObjectId] = None
     transaction_ids: list[PyObjectId] = Field(default_factory=list)
 
-
 class OccMeta(BaseModel):
     materialized_by: str = "manual"
     generated_at: Optional[datetime] = None
@@ -128,12 +110,10 @@ class OccMeta(BaseModel):
     edited: bool = False
     version: int = 1
 
-
 OccurrenceKind = Literal[
     "installment", "recurring_expense", "subscription_charge", "invoice",
     "third_party", "income", "loan", "financing", "other",
 ]
-
 
 class Occurrence(BaseDocument):
     user_id: PyObjectId
@@ -155,21 +135,18 @@ class Occurrence(BaseDocument):
     label: str = ""
     origin_group: str = "fixed"
     meta: OccMeta = Field(default_factory=OccMeta)
-    # transiente: status derivado, nunca persistido
     status: Optional[str] = Field(default=None, exclude=True)
-
 
 class Invoice(BaseDocument):
     user_id: PyObjectId
     credit_card_id: PyObjectId
-    period: dict  # {"year": int, "month": int}
+    period: dict
     competence: str
     closing_date: datetime
     due_date: datetime
     total: float = 0.0
     paid_amount: float = 0.0
     status: Literal["open", "closed", "partially_paid", "paid"] = "open"
-
 
 class Transaction(BaseDocument):
     user_id: PyObjectId
@@ -188,7 +165,6 @@ class Transaction(BaseDocument):
     source: str = "manual"
     idempotency_key: Optional[str] = None
 
-
 class ThirdPartyRelationship(BaseDocument):
     user_id: PyObjectId
     person_id: PyObjectId
@@ -197,10 +173,11 @@ class ThirdPartyRelationship(BaseDocument):
     total_amount: float
     installments: int = 1
     credit_card_id: Optional[PyObjectId] = None
+    category_id: Optional[PyObjectId] = None
+    start_date: Optional[datetime] = None
     commitment_id: Optional[PyObjectId] = None
     card_commitment_id: Optional[PyObjectId] = None
     status: Literal["open", "settled", "cancelled"] = "open"
-
 
 class Subscription(BaseDocument):
     user_id: PyObjectId
@@ -217,7 +194,6 @@ class Subscription(BaseDocument):
     start_competence: str = ""
     end_competence: Optional[str] = None
     status: Literal["active", "paused", "cancelled"] = "active"
-
 
 class IncomeSource(BaseDocument):
     user_id: PyObjectId
