@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { X } from "lucide-react";
-import { apiError, http } from "@/lib/api";
+import { apiError, http, parseMoneyInput } from "@/lib/api";
 
 const TYPES = [
   { key: "expense", label: "Gasto avulso" },
@@ -11,7 +11,7 @@ const TYPES = [
   { key: "fixed_expense", label: "Despesa fixa" },
   { key: "subscription", label: "Assinatura" },
   { key: "recurring_income", label: "Receita recorrente" },
-  { key: "loan", label: "Empréstimo" },
+  { key: "loan", label: "Empréstimo / dívida" },
   { key: "financing", label: "Financiamento" },
   { key: "third_party", label: "Terceiro" },
   { key: "transfer", label: "Transferência" },
@@ -48,11 +48,24 @@ export const QuickAddDrawer = ({ open, onClose }) => {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  const needsInstallments = ["purchase_installment", "loan", "financing"].includes(type);
+  const needsRecurrenceDay = ["fixed_expense", "subscription", "recurring_income"].includes(type);
+  const isCommitment = !["expense", "income", "transfer"].includes(type);
+  const needsFirstDueDate = needsInstallments && !form.credit_card_id;
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const amount = Number(form.amount);
-      if (!amount || amount <= 0) throw new Error("Informe um valor válido");
+      const amount = parseMoneyInput(form.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Informe um valor válido");
       if (!form.description && type !== "transfer") throw new Error("Informe a descrição");
+      if (needsFirstDueDate && !form.start_date) throw new Error("Informe o primeiro vencimento");
+
+      if (needsRecurrenceDay) {
+        const day = Number(form.day_of_month || 10);
+        if (!Number.isInteger(day) || day < 1 || day > 31) {
+          throw new Error("Informe um dia de vencimento entre 1 e 31");
+        }
+      }
 
       if (type === "expense" || type === "income") {
         return http.post("/transactions", {
@@ -92,6 +105,9 @@ export const QuickAddDrawer = ({ open, onClose }) => {
       if (["purchase_installment", "loan", "financing"].includes(type)) {
         payload.installments_total = Number(form.installments || 1);
       }
+      if (form.start_date && needsFirstDueDate) {
+        payload.start_date = form.start_date;
+      }
       if (form.credit_card_id) {
         payload.payment_method = "credit_card";
         payload.credit_card_id = form.credit_card_id;
@@ -99,7 +115,7 @@ export const QuickAddDrawer = ({ open, onClose }) => {
         payload.payment_method = "account";
         payload.default_account_id = form.account_id || null;
       }
-      if (["fixed_expense", "subscription", "recurring_income"].includes(type)) {
+      if (needsRecurrenceDay) {
         payload.day_of_month = Number(form.day_of_month || 10);
       }
       return http.post("/commitments", payload);
@@ -114,10 +130,6 @@ export const QuickAddDrawer = ({ open, onClose }) => {
   });
 
   if (!open) return null;
-
-  const needsInstallments = ["purchase_installment", "loan", "financing"].includes(type);
-  const needsRecurrenceDay = ["fixed_expense", "subscription", "recurring_income"].includes(type);
-  const isCommitment = !["expense", "income", "transfer"].includes(type);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center">
@@ -149,7 +161,10 @@ export const QuickAddDrawer = ({ open, onClose }) => {
             <button
               key={t.key}
               data-testid={`quick-add-type-${t.key}`}
-              onClick={() => setType(t.key)}
+              onClick={() => {
+                setType(t.key);
+                setForm({});
+              }}
               className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                 type === t.key
                   ? "border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]"
@@ -165,41 +180,72 @@ export const QuickAddDrawer = ({ open, onClose }) => {
           {type !== "transfer" && (
             <input
               className={field}
-              placeholder="Descrição (ex.: iPhone 15)"
+              placeholder="Descrição (ex.: parcela do empréstimo)"
               data-testid="quick-add-description"
               value={form.description || ""}
               onChange={set("description")}
             />
           )}
-          <input
-            className={`${field} num`}
-            placeholder="Valor total (R$)"
-            inputMode="decimal"
-            data-testid="quick-add-amount"
-            value={form.amount || ""}
-            onChange={set("amount")}
-          />
-
-          {needsInstallments && (
+          <div>
+            <label className="mb-1.5 block text-xs text-zinc-400">Valor total</label>
             <input
               className={`${field} num`}
-              placeholder="Número de parcelas"
-              inputMode="numeric"
-              data-testid="quick-add-installments"
-              value={form.installments || ""}
-              onChange={set("installments")}
+              placeholder="Ex.: 750,35 ou 750.35"
+              inputMode="decimal"
+              data-testid="quick-add-amount"
+              value={form.amount || ""}
+              onChange={set("amount")}
             />
+          </div>
+
+          {needsInstallments && (
+            <div>
+              <label className="mb-1.5 block text-xs text-zinc-400">Número de parcelas</label>
+              <input
+                className={`${field} num`}
+                placeholder="1"
+                inputMode="numeric"
+                data-testid="quick-add-installments"
+                value={form.installments || ""}
+                onChange={set("installments")}
+              />
+            </div>
+          )}
+
+          {needsFirstDueDate && (
+            <div>
+              <label className="mb-1.5 block text-xs text-zinc-400">Primeiro vencimento</label>
+              <input
+                type="date"
+                className={`${field} num`}
+                data-testid="quick-add-due-date"
+                value={form.start_date || ""}
+                onChange={set("start_date")}
+              />
+              <p className="mt-1 text-[11px] text-zinc-500">
+                As próximas parcelas mantêm esse dia nos meses seguintes.
+              </p>
+            </div>
+          )}
+
+          {needsInstallments && form.credit_card_id && (
+            <p className="rounded-md border border-white/[0.07] bg-zinc-900/60 px-3 py-2 text-[11px] text-zinc-500">
+              No cartão, o vencimento é calculado automaticamente pelo ciclo e pela data da fatura.
+            </p>
           )}
 
           {needsRecurrenceDay && (
-            <input
-              className={`${field} num`}
-              placeholder="Dia da cobrança (1-31)"
-              inputMode="numeric"
-              data-testid="quick-add-day"
-              value={form.day_of_month || ""}
-              onChange={set("day_of_month")}
-            />
+            <div>
+              <label className="mb-1.5 block text-xs text-zinc-400">Dia do vencimento / cobrança</label>
+              <input
+                className={`${field} num`}
+                placeholder="1 a 31"
+                inputMode="numeric"
+                data-testid="quick-add-day"
+                value={form.day_of_month || ""}
+                onChange={set("day_of_month")}
+              />
+            </div>
           )}
 
           {type === "third_party" && (
