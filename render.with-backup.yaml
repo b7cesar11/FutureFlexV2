@@ -1,0 +1,108 @@
+# Future Flex V2 — optional Render Blueprint WITH the paid daily backup cron.
+# Use this only if you intentionally want Render's paid Cron Job service.
+# For a no-payment deployment, use render.yaml instead.
+
+services:
+  - type: web
+    name: futureflex-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: APP_ENV
+        value: production
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: futureflex_staging
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PASSWORD_MIN_LENGTH
+        value: "15"
+      - key: PROJECTION_WINDOW_MONTHS
+        value: "24"
+      - key: REQUIRE_REPLICA_SET
+        value: "true"
+      - key: ENABLE_DEMO_USER
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AI_MODEL
+        value: gpt-5.5
+      - key: AI_DAILY_LIMIT
+        value: "60"
+
+  - type: web
+    name: futureflex-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: yarn install --frozen-lockfile --non-interactive && yarn build
+    staticPublishPath: build
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 20.20.2
+      - key: REACT_APP_BACKEND_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
+  - type: cron
+    name: futureflex-mongodb-backup
+    runtime: docker
+    plan: starter
+    schedule: "17 6 * * *"
+    dockerfilePath: ./ops/backup/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: BACKUP_MONGO_URL
+        sync: false
+      - key: BACKUP_DB_NAME
+        value: futureflex_staging
+      - key: BACKUP_BUCKET
+        sync: false
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_DEFAULT_REGION
+        value: auto
+      - key: BACKUP_ENCRYPTION_PASSPHRASE
+        sync: false
+      - key: BACKUP_PREFIX
+        value: futureflex
+      - key: BACKUP_TIMEZONE
+        value: America/Sao_Paulo
+      - key: BACKUP_RETENTION_DAILY
+        value: "14"
+      - key: BACKUP_RETENTION_WEEKLY
+        value: "8"
+      - key: BACKUP_RETENTION_MONTHLY
+        value: "12"
