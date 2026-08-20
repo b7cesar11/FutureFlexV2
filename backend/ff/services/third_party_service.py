@@ -8,7 +8,7 @@ fatura e uma ocorrência espelho a receber mantém claro quem deve reembolsar o 
 from datetime import datetime, timezone
 
 from ..core.deps import DomainError
-from ..domain.calendar_rules import competence_of
+from ..domain.calendar_rules import competence_of, today_utc
 from ..domain.money import money
 from ..models.base import now_utc
 from ..models.entities import ThirdPartyRelationship
@@ -212,6 +212,11 @@ async def update(user_id: str, relationship_id: str, payload: dict, session=None
     rel = await repo.third_parties.get(user_id, relationship_id, session=session)
     if not rel:
         raise DomainError("Registro de terceiro não encontrado.", 404)
+    if rel.source_module == "subscription":
+        raise DomainError(
+            "Este recebível é gerenciado por uma assinatura. Faça a alteração na tela Assinaturas.",
+            409,
+        )
     if rel.status != "open":
         raise DomainError("Somente registros abertos podem ser corrigidos.", 409)
 
@@ -258,6 +263,11 @@ async def delete(user_id: str, relationship_id: str, session=None) -> dict:
     rel = await repo.third_parties.get(user_id, relationship_id, session=session)
     if not rel:
         raise DomainError("Registro de terceiro não encontrado.", 404)
+    if rel.source_module == "subscription":
+        raise DomainError(
+            "Este recebível é gerenciado por uma assinatura. Remova o responsável na tela Assinaturas.",
+            409,
+        )
     commitments, occurrences = await _remove_schedule(
         user_id, rel, session=session, delete_relationship=True)
     return {"ok": True, "third_party_id": relationship_id,
@@ -267,11 +277,23 @@ async def delete(user_id: str, relationship_id: str, session=None) -> dict:
 async def summary(user_id: str) -> dict:
     relationships = await repo.third_parties.find(user_id, {})
     out = []
+    current = competence_of(today_utc())
     for rel in relationships:
         occs = await repo.occurrences.find(user_id, {"commitment_id": rel.commitment_id})
         active = [o for o in occs if o.state != "cancelled"]
-        total = sum(o.amount for o in active)
-        paid = sum(o.paid_amount for o in active)
+        # Recorrências não representam uma dívida de 24 meses no presente. Para elas,
+        # o saldo "pendente" contém somente competências já alcançadas; o futuro fica
+        # como projeção. Parcelamentos continuam exibindo o saldo total contratado.
+        considered = (
+            [o for o in active if o.competence <= current]
+            if rel.recurring else active
+        )
+        total = sum(o.amount for o in considered)
+        paid = sum(o.paid_amount for o in considered)
+        projected_future = sum(
+            max(o.amount - o.paid_amount, 0)
+            for o in active if o.competence > current and not o.frozen
+        ) if rel.recurring else 0
         person = await repo.people.get(user_id, rel.person_id)
         first_due = min((o.due_date for o in active), default=None)
         out.append({
@@ -284,6 +306,7 @@ async def summary(user_id: str) -> dict:
             "total_amount": rel.total_amount,
             "paid": round(paid, 2),
             "pending": round(total - paid, 2),
+            "projected_future": round(projected_future, 2),
             "installments": rel.installments,
             "recurring": rel.recurring,
             "credit_card_id": rel.credit_card_id,
@@ -292,8 +315,10 @@ async def summary(user_id: str) -> dict:
             "first_due_date": first_due.isoformat() if first_due else None,
             "commitment_id": rel.commitment_id,
             "card_commitment_id": rel.card_commitment_id,
+            "source_module": rel.source_module,
+            "source_ref_id": rel.source_ref_id,
             "status": rel.status,
-            "editable": rel.status == "open" and paid == 0,
+            "editable": rel.status == "open" and paid == 0 and rel.source_module != "subscription",
         })
     receivable = round(sum(r["pending"] for r in out if r["direction"] == "receivable"), 2)
     payable = round(sum(r["pending"] for r in out if r["direction"] == "payable"), 2)
