@@ -178,6 +178,8 @@ class ThirdPartyRelationship(BaseDocument):
     start_date: Optional[datetime] = None
     commitment_id: Optional[PyObjectId] = None
     card_commitment_id: Optional[PyObjectId] = None
+    source_module: Literal["manual", "subscription"] = "manual"
+    source_ref_id: Optional[PyObjectId] = None
     status: Literal["open", "settled", "cancelled"] = "open"
 
 class Subscription(BaseDocument):
@@ -192,6 +194,8 @@ class Subscription(BaseDocument):
     account_id: Optional[PyObjectId] = None
     category_id: Optional[PyObjectId] = None
     commitment_id: Optional[PyObjectId] = None
+    responsible_person_id: Optional[PyObjectId] = None
+    third_party_relationship_id: Optional[PyObjectId] = None
     start_competence: str = ""
     end_competence: Optional[str] = None
     status: Literal["active", "paused", "cancelled"] = "active"
