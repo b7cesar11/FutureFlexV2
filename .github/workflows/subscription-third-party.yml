@@ -1,0 +1,104 @@
+name: Subscription Third-Party Integration
+
+on:
+  push:
+    branches: [main, "agent/**"]
+  pull_request:
+    branches: [main, "agent/release-v1-hardening"]
+
+concurrency:
+  group: subscription-third-party-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      MONGO_URL: mongodb://127.0.0.1:27017/?replicaSet=rs0
+      DB_NAME: futureflex_subscription_tp_ci
+      JWT_SECRET: subscription-third-party-ci-secret-1234567890
+      PROJECTION_WINDOW_MONTHS: "24"
+      REQUIRE_REPLICA_SET: "true"
+      ENABLE_DEMO_USER: "false"
+      COOKIE_SECURE: "false"
+      COOKIE_SAMESITE: lax
+      PASSWORD_MIN_LENGTH: "8"
+      FRONTEND_URL: http://127.0.0.1:8001
+      CORS_ORIGINS: http://127.0.0.1:8001
+      OPENAI_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name futureflex-subscription-tp-mongo -p 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
+          for i in {1..30}; do
+            if docker exec futureflex-subscription-tp-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec futureflex-subscription-tp-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          for i in {1..30}; do
+            if docker exec futureflex-subscription-tp-mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall -q backend/ff backend/server.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Build same-origin frontend
+        working-directory: frontend
+        env:
+          CI: "false"
+          REACT_APP_BACKEND_URL: ""
+        run: yarn build
+
+      - name: Start full-stack server
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn server:app --host 127.0.0.1 --port 8001 > /tmp/futureflex-subscription-tp.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null && curl -fsS http://127.0.0.1:8001/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/futureflex-subscription-tp.log
+          exit 1
+
+      - name: Backend recurring third-party regression
+        run: python -m pytest tests/test_third_party_recurring.py tests/test_subscription_third_party.py -v
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: yarn playwright install --with-deps chromium
+
+      - name: Browser subscription reimbursement flow
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/subscription-third-party.spec.js
+
+      - name: Show backend log on failure
+        if: failure()
+        run: cat /tmp/futureflex-subscription-tp.log || true
