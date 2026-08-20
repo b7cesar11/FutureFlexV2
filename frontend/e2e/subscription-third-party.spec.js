@@ -49,7 +49,7 @@ test("subscription charged on my card can be reimbursed by a third party without
   await expect(page.getByTestId("third-parties-page")).toBeVisible();
   await page.getByTestId("person-name").fill("Pai QA");
   await page.getByTestId("person-save").click();
-  await expect(page.getByText("Pai QA", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("people-list").getByText("Pai QA", { exact: true })).toBeVisible();
 
   await page.goto("/assinaturas");
   await expect(page.getByTestId("subscriptions-page")).toBeVisible();
