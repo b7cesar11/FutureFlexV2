@@ -13,7 +13,7 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       APP_ENV: test
       MONGO_URL: mongodb://127.0.0.1:27017/?replicaSet=rs0
@@ -86,12 +86,36 @@ jobs:
           cat /tmp/futureflex-subscription-tp.log
           exit 1
 
+      - name: Release security and deploy guards
+        run: python -m pytest tests/test_release_security.py tests/test_deploy_config.py -v
+
+      - name: Core financial rules
+        run: python -m pytest tests/test_business_rules.py -v
+
+      - name: Dynamic amounts regression
+        run: python -m pytest tests/test_dynamic_amounts.py -v
+
+      - name: Backend E2E regression
+        run: python -m pytest backend/tests/backend_test.py -v
+
       - name: Backend recurring third-party regression
         run: python -m pytest tests/test_third_party_recurring.py tests/test_subscription_third_party.py -v
 
       - name: Install Chromium
         working-directory: frontend
         run: yarn playwright install --with-deps chromium
+
+      - name: Existing browser release smoke
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/release-smoke.spec.js
+
+      - name: Existing flexibility regression
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8001
+        run: yarn playwright test e2e/flexibility.spec.js
 
       - name: Browser subscription reimbursement flow
         working-directory: frontend
