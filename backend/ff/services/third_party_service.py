@@ -2,10 +2,13 @@
 
 Registros ainda não realizados podem ser corrigidos ou removidos. Depois que existe
 pagamento (inclusive pagamento parcial da fatura relacionada), o histórico fica protegido.
+Também suporta despesas fixas de terceiros no cartão do usuário: a cobrança entra na
+fatura e uma ocorrência espelho a receber mantém claro quem deve reembolsar o valor.
 """
 from datetime import datetime, timezone
 
 from ..core.deps import DomainError
+from ..domain.calendar_rules import competence_of, today_utc
 from ..domain.money import money
 from ..models.base import now_utc
 from ..models.entities import ThirdPartyRelationship
@@ -56,8 +59,12 @@ def _validated(payload: dict, *, partial: bool = False) -> dict:
         if installments < 1 or installments > 360:
             raise DomainError("Número de parcelas deve estar entre 1 e 360.", 422)
         out["installments"] = installments
+    if "recurring" in out:
+        out["recurring"] = bool(out.get("recurring"))
     if "start_date" in out:
         out["start_date"] = _parse_date(out.get("start_date"))
+    if out.get("recurring") and out.get("direction") == "payable" and out.get("credit_card_id"):
+        raise DomainError("Cobrança recorrente no seu cartão só é válida quando o terceiro deve reembolsar você.", 422)
     return out
 
 
@@ -103,22 +110,36 @@ async def _remove_schedule(user_id: str, rel: ThirdPartyRelationship, session=No
     return len(commitment_ids), len(occurrences)
 
 
+def _schedule_payload(relationship: ThirdPartyRelationship) -> dict:
+    if relationship.recurring:
+        start = relationship.start_date
+        return {
+            "frequency": "monthly",
+            "day_of_month": start.day,
+            "start_competence": competence_of(start.date()),
+        }
+    return {"installments_total": relationship.installments}
+
+
 async def _build_schedule(user_id: str, relationship: ThirdPartyRelationship, session=None) -> dict:
     person = await repo.people.get(user_id, relationship.person_id, session=session)
     if not person:
         raise DomainError("Pessoa não encontrada", 404)
+    if relationship.recurring and not relationship.start_date:
+        raise DomainError("Informe a primeira data da cobrança recorrente.", 422)
 
+    schedule = _schedule_payload(relationship)
     card_commitment = None
     if relationship.credit_card_id and relationship.direction == "receivable":
         card_commitment = await commitment_service.create_commitment(user_id, {
-            "type": "purchase_installment",
+            "type": "fixed_expense" if relationship.recurring else "purchase_installment",
             "description": f"{relationship.description} ({person.name})",
             "total_amount": relationship.total_amount,
-            "installments_total": relationship.installments,
             "payment_method": "credit_card",
             "credit_card_id": relationship.credit_card_id,
             "category_id": relationship.category_id,
             "start_date": relationship.start_date,
+            **schedule,
         }, session=session, source={"module": "third_party", "ref_id": relationship.id})
 
     ctype = "third_party_receivable" if relationship.direction == "receivable" else "third_party_payable"
@@ -126,11 +147,11 @@ async def _build_schedule(user_id: str, relationship: ThirdPartyRelationship, se
         "type": ctype,
         "description": f"{person.name} · {relationship.description}",
         "total_amount": relationship.total_amount,
-        "installments_total": relationship.installments,
         "payment_method": "account",
         "person_id": relationship.person_id,
         "category_id": relationship.category_id,
         "start_date": relationship.start_date,
+        **schedule,
     }, session=session, source={"module": "third_party", "ref_id": relationship.id},
         linked_commitment_id=card_commitment.id if card_commitment else None)
 
@@ -145,6 +166,7 @@ async def _build_schedule(user_id: str, relationship: ThirdPartyRelationship, se
                 "refs.person_id": relationship.person_id,
                 "detail.third_party_responsible": True,
                 "detail.third_party_id": relationship.id,
+                "detail.third_party_recurring": relationship.recurring,
                 "updated_at": now_utc(),
             }, session=session)
 
@@ -164,6 +186,8 @@ async def create(user_id: str, payload: dict, session=None) -> dict:
     payload = _validated(payload)
     if not payload.get("person_id"):
         raise DomainError("Selecione a pessoa.", 422)
+    if payload.get("recurring") and not payload.get("start_date"):
+        raise DomainError("Informe a primeira data da cobrança recorrente.", 422)
     await assert_owned(user_id, {"person_id": payload["person_id"],
                                 "credit_card_id": payload.get("credit_card_id"),
                                 "category_id": payload.get("category_id")}, session=session)
@@ -175,6 +199,7 @@ async def create(user_id: str, payload: dict, session=None) -> dict:
         description=payload["description"],
         total_amount=payload["total_amount"],
         installments=payload["installments"],
+        recurring=payload.get("recurring", False),
         credit_card_id=payload.get("credit_card_id"),
         category_id=payload.get("category_id"),
         start_date=payload.get("start_date"),
@@ -187,12 +212,17 @@ async def update(user_id: str, relationship_id: str, payload: dict, session=None
     rel = await repo.third_parties.get(user_id, relationship_id, session=session)
     if not rel:
         raise DomainError("Registro de terceiro não encontrado.", 404)
+    if rel.source_module == "subscription":
+        raise DomainError(
+            "Este recebível é gerenciado por uma assinatura. Faça a alteração na tela Assinaturas.",
+            409,
+        )
     if rel.status != "open":
         raise DomainError("Somente registros abertos podem ser corrigidos.", 409)
 
     payload = _validated(payload, partial=True)
     allowed = {
-        "person_id", "direction", "description", "total_amount", "installments",
+        "person_id", "direction", "description", "total_amount", "installments", "recurring",
         "credit_card_id", "category_id", "start_date",
     }
     unknown = set(payload) - allowed
@@ -202,6 +232,13 @@ async def update(user_id: str, relationship_id: str, payload: dict, session=None
     person_id = payload.get("person_id", rel.person_id)
     credit_card_id = payload.get("credit_card_id", rel.credit_card_id)
     category_id = payload.get("category_id", rel.category_id)
+    recurring = payload.get("recurring", rel.recurring)
+    start_date = payload.get("start_date", rel.start_date)
+    direction = payload.get("direction", rel.direction)
+    if recurring and not start_date:
+        raise DomainError("Informe a primeira data da cobrança recorrente.", 422)
+    if recurring and direction == "payable" and credit_card_id:
+        raise DomainError("Cobrança recorrente no seu cartão só é válida quando o terceiro deve reembolsar você.", 422)
     await assert_owned(user_id, {"person_id": person_id,
                                 "credit_card_id": credit_card_id,
                                 "category_id": category_id}, session=session)
@@ -212,6 +249,7 @@ async def update(user_id: str, relationship_id: str, payload: dict, session=None
         "person_id": person_id,
         "credit_card_id": credit_card_id,
         "category_id": category_id,
+        "recurring": recurring,
         "commitment_id": None,
         "card_commitment_id": None,
         "updated_at": now_utc(),
@@ -225,6 +263,11 @@ async def delete(user_id: str, relationship_id: str, session=None) -> dict:
     rel = await repo.third_parties.get(user_id, relationship_id, session=session)
     if not rel:
         raise DomainError("Registro de terceiro não encontrado.", 404)
+    if rel.source_module == "subscription":
+        raise DomainError(
+            "Este recebível é gerenciado por uma assinatura. Remova o responsável na tela Assinaturas.",
+            409,
+        )
     commitments, occurrences = await _remove_schedule(
         user_id, rel, session=session, delete_relationship=True)
     return {"ok": True, "third_party_id": relationship_id,
@@ -234,11 +277,23 @@ async def delete(user_id: str, relationship_id: str, session=None) -> dict:
 async def summary(user_id: str) -> dict:
     relationships = await repo.third_parties.find(user_id, {})
     out = []
+    current = competence_of(today_utc())
     for rel in relationships:
         occs = await repo.occurrences.find(user_id, {"commitment_id": rel.commitment_id})
         active = [o for o in occs if o.state != "cancelled"]
-        total = sum(o.amount for o in active)
-        paid = sum(o.paid_amount for o in active)
+        # Recorrências não representam uma dívida de 24 meses no presente. Para elas,
+        # o saldo "pendente" contém somente competências já alcançadas; o futuro fica
+        # como projeção. Parcelamentos continuam exibindo o saldo total contratado.
+        considered = (
+            [o for o in active if o.competence <= current]
+            if rel.recurring else active
+        )
+        total = sum(o.amount for o in considered)
+        paid = sum(o.paid_amount for o in considered)
+        projected_future = sum(
+            max(o.amount - o.paid_amount, 0)
+            for o in active if o.competence > current and not o.frozen
+        ) if rel.recurring else 0
         person = await repo.people.get(user_id, rel.person_id)
         first_due = min((o.due_date for o in active), default=None)
         out.append({
@@ -251,15 +306,19 @@ async def summary(user_id: str) -> dict:
             "total_amount": rel.total_amount,
             "paid": round(paid, 2),
             "pending": round(total - paid, 2),
+            "projected_future": round(projected_future, 2),
             "installments": rel.installments,
+            "recurring": rel.recurring,
             "credit_card_id": rel.credit_card_id,
             "category_id": rel.category_id,
             "start_date": rel.start_date.isoformat() if rel.start_date else None,
             "first_due_date": first_due.isoformat() if first_due else None,
             "commitment_id": rel.commitment_id,
             "card_commitment_id": rel.card_commitment_id,
+            "source_module": rel.source_module,
+            "source_ref_id": rel.source_ref_id,
             "status": rel.status,
-            "editable": rel.status == "open" and paid == 0,
+            "editable": rel.status == "open" and paid == 0 and rel.source_module != "subscription",
         })
     receivable = round(sum(r["pending"] for r in out if r["direction"] == "receivable"), 2)
     payable = round(sum(r["pending"] for r in out if r["direction"] == "payable"), 2)

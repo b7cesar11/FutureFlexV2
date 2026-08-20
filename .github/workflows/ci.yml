@@ -70,6 +70,8 @@ jobs:
         run: python -m pytest tests/test_business_rules.py -v
       - name: Dynamic amounts regression
         run: python -m pytest tests/test_dynamic_amounts.py -v
+      - name: Third-party recurring card reimbursements
+        run: python -m pytest tests/test_third_party_recurring.py -v
       - name: Backend E2E regression
         run: python -m pytest backend/tests/backend_test.py -v
       - name: Show backend log on failure
