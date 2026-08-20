@@ -172,6 +172,7 @@ class ThirdPartyRelationship(BaseDocument):
     description: str
     total_amount: float
     installments: int = 1
+    recurring: bool = False
     credit_card_id: Optional[PyObjectId] = None
     category_id: Optional[PyObjectId] = None
     start_date: Optional[datetime] = None
