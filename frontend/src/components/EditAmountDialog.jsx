@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { X } from "lucide-react";
-import { apiError, brl, competenceLabel, http } from "@/lib/api";
+import { apiError, brl, competenceLabel, http, parseMoneyInput } from "@/lib/api";
 
 const MODES = [
   {
@@ -40,7 +40,7 @@ export const EditAmountDialog = ({ target, onClose }) => {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const amount = Number(value);
+      const amount = parseMoneyInput(value);
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error("Informe um valor maior que zero");
       }

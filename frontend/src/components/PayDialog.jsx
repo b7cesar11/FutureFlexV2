@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { X } from "lucide-react";
-import { apiError, brl, http } from "@/lib/api";
+import { apiError, brl, http, parseMoneyInput } from "@/lib/api";
 
 export const PayDialog = ({ target, onClose, mode = "occurrence" }) => {
   const [accountId, setAccountId] = useState("");
@@ -21,7 +21,11 @@ export const PayDialog = ({ target, onClose, mode = "occurrence" }) => {
     mutationFn: async () => {
       if (!accountId) throw new Error("Escolha a conta utilizada no pagamento");
       const body = { account_id: accountId };
-      if (amount) body.amount = Number(amount);
+      if (amount) {
+        const parsed = parseMoneyInput(amount);
+        if (!Number.isFinite(parsed) || parsed <= 0) throw new Error("Informe um valor de pagamento válido");
+        body.amount = parsed;
+      }
       const url = isInvoice
         ? `/invoices/${target.refs?.invoice_id || target.id}/pay`
         : `/occurrences/${target.id}/pay`;

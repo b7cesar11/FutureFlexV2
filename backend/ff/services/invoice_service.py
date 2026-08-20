@@ -1,13 +1,10 @@
-"""Servico de faturas. A fatura e a obrigacao AGREGADA do periodo do cartao.
+"""Serviço de faturas. A fatura é a obrigação AGREGADA do período do cartão.
 
-Regra anti-dupla-contagem: a fatura possui uma ocorrencia propria (kind="invoice") que e
-a unica que soma no total de Compromissos do Mes. As parcelas/compras vinculadas
-(refs.invoice_id preenchido) sao a COMPOSICAO da fatura e nao somam de novo.
+Regra anti-dupla-contagem: a fatura possui uma ocorrência própria (kind="invoice") que é
+a única que soma no total de Compromissos do Mês. As parcelas/compras vinculadas
+(refs.invoice_id preenchido) são a COMPOSIÇÃO da fatura e não somam de novo.
 """
-from datetime import date
-
 from ..core.db import db
-from ..core.deps import DomainError
 from ..domain import card_cycle
 from ..domain.calendar_rules import as_datetime, clamp_day, parse_competence
 from ..domain.money import summed
@@ -18,7 +15,6 @@ from bson import ObjectId
 
 
 async def get_or_create(user_id: str, card, competence: str, session=None) -> Invoice:
-    """Idempotente por (user, cartao, periodo) — protegido por indice unico."""
     year, month = parse_competence(competence)
     existing = await db.invoices.find_one(
         {"user_id": ObjectId(user_id), "credit_card_id": ObjectId(card.id),
@@ -34,7 +30,6 @@ async def get_or_create(user_id: str, card, competence: str, session=None) -> In
                       total=0.0, paid_amount=0.0, status="open")
     await repo.invoices.insert(invoice, session=session)
 
-    # ocorrencia agregadora da fatura (a que aparece no grupo "Cartões")
     occ = Occurrence(user_id=user_id, commitment_id=None, kind="invoice", direction="outflow",
                      competence=competence, due_date=as_datetime(due), amount=0.0,
                      label=f"Fatura {card.name}", origin_group="cards",
@@ -45,16 +40,17 @@ async def get_or_create(user_id: str, card, competence: str, session=None) -> In
     return invoice
 
 
-async def recalculate(user_id: str, invoice_id: str, session=None) -> Invoice:
-    """Recalcula o total da fatura a partir de seus itens e sincroniza a ocorrencia agregadora."""
-    items = await repo.occurrences.find(
-        user_id, {"refs.invoice_id": invoice_id}, session=session)
+async def recalculate(user_id: str, invoice_id: str, session=None) -> Invoice | None:
+    """Recalcula a fatura exclusivamente a partir dos filhos e repara flags antigas do agregador."""
+    items = await repo.occurrences.find(user_id, {"refs.invoice_id": invoice_id}, session=session)
     children = [o for o in items if o.kind != "invoice" and o.state != "cancelled"]
     aggregator = next((o for o in items if o.kind == "invoice"), None)
 
     total = summed(o.amount for o in children)
     paid_children = summed(o.paid_amount for o in children)
     invoice = await repo.invoices.get(user_id, invoice_id, session=session)
+    if not invoice:
+        return None
     status = invoice.status
     if status not in ("paid", "partially_paid"):
         status = "open"
@@ -65,6 +61,7 @@ async def recalculate(user_id: str, invoice_id: str, session=None) -> Invoice:
         await repo.occurrences.update(
             user_id, aggregator.id,
             {"amount": total, "paid_amount": min(paid_children, total),
+             "amount_source": "default",
              "detail.items_count": len(children), "updated_at": now_utc()},
             session=session)
     invoice.total = total

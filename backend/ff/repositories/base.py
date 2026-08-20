@@ -60,7 +60,10 @@ class Repository:
                                          {"$inc": changes}, session=session)
 
     async def delete(self, user_id: str, _id: str, session=None):
-        await self.collection.delete_one(self._scope(user_id, {"_id": _id}), session=session)
+        return await self.collection.delete_one(self._scope(user_id, {"_id": _id}), session=session)
+
+    async def delete_many(self, user_id: str, filters: dict, session=None):
+        return await self.collection.delete_many(self._scope(user_id, filters), session=session)
 
     async def exists(self, user_id: str, _id: str, session=None) -> bool:
         return await self.collection.count_documents(self._scope(user_id, {"_id": _id}),

@@ -1,0 +1,50 @@
+# Future Flex V2 — free personal deployment.
+# One Render web service serves both FastAPI and the compiled React app.
+# Keeping UI + API on the same origin makes HttpOnly-cookie auth reliable across
+# desktop/mobile browsers and removes the need for cross-site session cookies.
+# Optional paid backup cron configuration lives in render.with-backup.yaml.
+# MongoDB remains external because ACID transactions are mandatory.
+
+services:
+  - type: web
+    name: futureflex-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && cd frontend && yarn install --frozen-lockfile --non-interactive && REACT_APP_BACKEND_URL= yarn build
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: NODE_VERSION
+        value: 20.20.2
+      - key: APP_ENV
+        value: production
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: futureflex
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PASSWORD_MIN_LENGTH
+        value: "15"
+      - key: PROJECTION_WINDOW_MONTHS
+        value: "24"
+      - key: REQUIRE_REPLICA_SET
+        value: "true"
+      - key: ENABLE_DEMO_USER
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: lax
+      # The full-stack app itself is now the browser origin.
+      - key: FRONTEND_URL
+        value: https://futureflex-api.onrender.com
+      - key: CORS_ORIGINS
+        value: https://futureflex-api.onrender.com
+      - key: AI_MODEL
+        value: gpt-5.5
+      - key: AI_DAILY_LIMIT
+        value: "60"

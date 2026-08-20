@@ -1,0 +1,39 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: futureflex-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - futureflex_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        mongosh --host mongo:27017 --quiet --eval '
+          try {
+            rs.status()
+          } catch (e) {
+            rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo:27017"}]})
+          }
+        '
+        until mongosh --host mongo:27017 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do
+          sleep 2
+        done
+        echo "MongoDB rs0 ready"
+
+volumes:
+  futureflex_mongo_data:
