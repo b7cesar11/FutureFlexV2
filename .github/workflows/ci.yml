@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, "agent/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "agent/release-v1-hardening"]
 
 concurrency:
   group: futureflex-ci-${{ github.ref }}

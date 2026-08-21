@@ -1,0 +1,44 @@
+name: Audit Lockfile Refresh
+
+on:
+  push:
+    branches: [agent/release-dependency-audit]
+    paths:
+      - frontend/package.json
+      - .github/workflows/audit-lockfile-refresh.yml
+  pull_request:
+    branches: [agent/release-v1-hardening]
+    paths:
+      - frontend/package.json
+      - .github/workflows/audit-lockfile-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-dependency-audit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Refresh lockfile from patched package manifest
+        run: yarn install --non-interactive
+      - name: Commit refreshed lockfile
+        run: |
+          if [ -n "$(git status --porcelain -- yarn.lock)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add yarn.lock
+            git commit -m "chore: refresh audited frontend lockfile"
+            git push origin HEAD:agent/release-dependency-audit
+          else
+            echo "Lockfile already current"
+          fi
