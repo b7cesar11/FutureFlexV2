@@ -11,9 +11,24 @@ import { CommitmentDetailDrawer } from "@/components/CommitmentDetailDrawer";
 import { PayDialog } from "@/components/PayDialog";
 import { EditAmountDialog } from "@/components/EditAmountDialog";
 
+function dueDateValue(item) {
+  if (!item?.due_date) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(item.due_date).getTime();
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+}
+
+function orderByDueDate(items) {
+  return [...items].sort((a, b) => {
+    const byDueDate = dueDateValue(a) - dueDateValue(b);
+    if (byDueDate !== 0) return byDueDate;
+    return String(a.label || "").localeCompare(String(b.label || ""), "pt-BR");
+  });
+}
+
 export default function Commitments() {
   const { competence } = useMonth();
   const [openGroups, setOpenGroups] = useState({});
+  const [sortByDueDate, setSortByDueDate] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [payTarget, setPayTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
@@ -70,7 +85,27 @@ export default function Commitments() {
             </div>
           )}
 
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="label-caps">Lista do mês</p>
+              <p className="mt-1 text-xs text-zinc-500">Ative a ordenação para ver primeiro os boletos e compromissos que vencem antes.</p>
+            </div>
+            <button
+              type="button"
+              data-testid="sort-by-due-date-toggle"
+              aria-pressed={sortByDueDate}
+              onClick={() => setSortByDueDate((current) => !current)}
+              className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                sortByDueDate
+                  ? "border-[#ccff00]/50 bg-[#ccff00]/10 text-[#ccff00]"
+                  : "border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100"
+              }`}
+            >
+              Ordenar por vencimento: {sortByDueDate ? "ativado" : "desativado"}
+            </button>
+          </div>
+
+          <div className="mt-3 space-y-3">
             {data.groups.length === 0 && (
               <EmptyState title="Nenhum compromisso neste mês"
                 description="Use o botão Registrar para criar uma compra parcelada, despesa fixa, assinatura ou terceiro. Tudo aparece automaticamente aqui."
@@ -79,6 +114,7 @@ export default function Commitments() {
 
             {data.groups.map((group) => {
               const open = openGroups[group.key] ?? true;
+              const items = sortByDueDate ? orderByDueDate(group.items) : group.items;
               return (
                 <div key={group.key} className="surface overflow-hidden rounded-lg" data-testid={`group-${group.key}`}>
                   <button onClick={() => toggle(group.key)} data-testid={`group-toggle-${group.key}`}
@@ -94,11 +130,12 @@ export default function Commitments() {
 
                   {open && (
                     <div className="border-t border-white/[0.06]">
-                      {group.items.map((item) => {
+                      {items.map((item) => {
                         const meta = STATUS_META[item.status] || STATUS_META.future;
                         const isInvoiceAggregate = item.kind === "invoice";
                         return (
                           <div key={item.id} data-testid={`occurrence-${item.id}`}
+                            data-due-date={item.due_date || ""}
                             className={`flex flex-wrap items-center gap-3 px-5 py-3.5 transition-colors hover:bg-zinc-800/30 ${item.counts_in_total ? "" : "bg-zinc-950/40"}`}>
                             <button onClick={() => item.commitment_id && setDetailId(item.commitment_id)}
                               data-testid={`occurrence-open-${item.id}`} className="flex-1 min-w-[180px] text-left">
